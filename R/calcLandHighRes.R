@@ -67,7 +67,7 @@ calcLandHighRes <- function(input, target, harmonizationPeriod, yearsSubset, har
 
   mapping <- calcOutput("ResolutionMapping", input = input, target = target, aggregate = FALSE)
 
-  if (downscaling == "proportional") {
+  if (downscaling == "proportional" || downscaling == "magpieClassic") {
     out <- toolDownscaleSimpleProportional(x[, getYears(x, as.integer = TRUE) >= max(histYears), ],
                                            xTarget[, max(histYears), ],
                                            xTargetLowRes = landTargetLowRes,

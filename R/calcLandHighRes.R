@@ -4,17 +4,47 @@
 #' from the low resolution input dataset and the high resolution target dataset
 #' using the given downscaling method.
 #'
+#' @details With \code{downscaling = "transitions"} and \code{harmonization = "none"}, the land is
+#' downscaled along the transitions of the input from its own start map
+#' (\code{\link{calcLandTransitionsHighRes}}), without harmonisation and recategorisation: the land types
+#' of the input are the categories of the target (only \code{target = "landuseinit"}), the grid cells
+#' those of the input (names "x.y.iso"), and the start is labelled y1985. Otherwise the harmonised land
+#' is downscaled from the target map at the end of history.
+#'
 #' @inheritParams calcLandInput
 #' @param target name of a target dataset
 #' @param harmonizationPeriod Two integer values, before the first given
 #' year the target dataset is used, after the second given year the input
 #' dataset is used, in between harmonize between the two datasets
-#' @param yearsSubset vector of years to keep in the output dataset
-#' @param harmonization name of harmonization method, see \code{\link{toolGetHarmonizer}}
-#' @param downscaling name of downscaling method, currently only "magpieClassic"
+#' @param yearsSubset vector of years to keep in the output dataset; NULL keeps all years (only with
+#' \code{downscaling = "transitions"} and \code{harmonization = "none"})
+#' @param harmonization name of harmonization method, see \code{\link{toolGetHarmonizer}}, or "none"
+#' (only with \code{downscaling = "transitions"})
+#' @param downscaling name of downscaling method: "proportional" (\code{luscale::interpolate2}) or "transitions"
+#' (\code{\link{calcLandTransitionsHighRes}}, or \code{\link{toolDownscaleTransitions}} on harmonised states)
 #' @return downscaled land use data
-#' @author Jan Philipp Dietrich, Pascal Sauer
+#' @author Jan Philipp Dietrich, Pascal Sauer, Patrick v. Jeetze
 calcLandHighRes <- function(input, target, harmonizationPeriod, yearsSubset, harmonization, downscaling) {
+  if (downscaling == "transitions" && harmonization == "none") {
+    if (target != "landuseinit") {
+      stop("downscaling = \"transitions\" with harmonization = \"none\" supports only target = \"landuseinit\"")
+    }
+    landHr <- calcOutput("LandTransitionsHighRes", input = input, target = target, harmonization = harmonization,
+                         aggregate = FALSE)[["landHr"]]
+    out <- dimSums(landHr, dim = 3.2)
+    if (!is.null(yearsSubset)) {
+      out <- out[, getYears(out, as.integer = TRUE) %in% c(1985, yearsSubset), ]
+    }
+
+    targetCategories <- unique(toolGetMapping("referenceMappings/landuseinit.csv", where = "mrdownscale")[["data"]])
+    toolExpectTrue(setequal(getItems(out, dim = 3), targetCategories), "Land categories match target definition")
+    toolExpectTrue(all(out >= 0), "All values are >= 0")
+    outSum <- dimSums(out, dim = 3)
+    toolExpectLessDiff(outSum, outSum[, 1, ], 10^-5, "Total land area per cell in output stays constant over time")
+    return(list(x = out, class = "magpie", isocountries = FALSE, unit = "Mha", min = 0,
+                description = "Land use data downscaled along the transitions of the input"))
+  }
+
   x <- calcOutput("LandHarmonized", input = input, target = target,
                   harmonizationPeriod = harmonizationPeriod, harmonization = harmonization,
                   aggregate = FALSE)
@@ -37,12 +67,16 @@ calcLandHighRes <- function(input, target, harmonizationPeriod, yearsSubset, har
 
   mapping <- calcOutput("ResolutionMapping", input = input, target = target, aggregate = FALSE)
 
-  if (downscaling == "magpieClassic") {
-    out <- toolDownscaleMagpieClassic(x[, getYears(x, as.integer = TRUE) >= max(histYears), ],
-                                      xTarget[, max(histYears), ],
-                                      xTargetLowRes = landTargetLowRes,
-                                      mapping = mapping)
+  if (downscaling == "proportional") {
+    out <- toolDownscaleSimpleProportional(x[, getYears(x, as.integer = TRUE) >= max(histYears), ],
+                                           xTarget[, max(histYears), ],
+                                           xTargetLowRes = landTargetLowRes,
+                                           mapping = mapping)
     out <- out[, getYears(out, as.integer = TRUE) > max(histYears), ]
+  } else if (downscaling == "transitions") {
+    out <- toolDownscaleTransitions(x[, getYears(x, as.integer = TRUE) >= max(histYears), ],
+                                    xTarget[, max(histYears), ],
+                                    mapping = mapping)
   } else {
     stop("Unsupported downscaling method \"", downscaling, "\"")
   }

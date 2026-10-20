@@ -22,11 +22,14 @@ calcLandHighRes(
 year the target dataset is used, after the second given year the input
 dataset is used, in between harmonize between the two datasets}
 
-\item{yearsSubset}{vector of years to keep in the output dataset}
+\item{yearsSubset}{vector of years to keep in the output dataset; NULL keeps all years (only with
+\code{downscaling = "transitions"} and \code{harmonization = "none"})}
 
-\item{harmonization}{name of harmonization method, see \code{\link{toolGetHarmonizer}}}
+\item{harmonization}{name of harmonization method, see \code{\link{toolGetHarmonizer}}, or "none"
+(only with \code{downscaling = "transitions"})}
 
-\item{downscaling}{name of downscaling method, currently only "magpieClassic"}
+\item{downscaling}{name of downscaling method: "proportional" (\code{luscale::interpolate2}) or "transitions"
+(\code{\link{calcLandTransitionsHighRes}}, or \code{\link{toolDownscaleTransitions}} on harmonised states)}
 }
 \value{
 downscaled land use data
@@ -36,6 +39,14 @@ This function performs the downscaling: It calculates a high resolution dataset
 from the low resolution input dataset and the high resolution target dataset
 using the given downscaling method.
 }
+\details{
+With \code{downscaling = "transitions"} and \code{harmonization = "none"}, the land is
+downscaled along the transitions of the input from its own start map
+(\code{\link{calcLandTransitionsHighRes}}), without harmonisation and recategorisation: the land types
+of the input are the categories of the target (only \code{target = "landuseinit"}), the grid cells
+those of the input (names "x.y.iso"), and the start is labelled y1985. Otherwise the harmonised land
+is downscaled from the target map at the end of history.
+}
 \author{
-Jan Philipp Dietrich, Pascal Sauer
+Jan Philipp Dietrich, Pascal Sauer, Patrick v. Jeetze
 }

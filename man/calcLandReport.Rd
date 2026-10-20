@@ -14,7 +14,13 @@ calcLandReport(
 )
 }
 \arguments{
-\item{outputFormat}{format in which the outputs should be prepared. Options: ESM, ScenarioMIP, downscaledmagpie}
+\item{outputFormat}{format in which the outputs should be prepared. Options: ESM, ScenarioMIP,
+downscaledmagpie (land by land type, as avl_land_t_0.5.mz), and with \code{downscaling = "transitions"} and
+\code{harmonization = "none"} downscaledmagpieSplit (land by land type, sub-type and water supply, names
+"land.type.water": crop area of food and feed crops kfo and of bioenergy crops kbe, rainfed and
+irrigated, fallow land and tree cover, and the sub-types of the other land types with water "total")
+and downscaledmagpieCroparea (crop area by crop and water supply as share of the grid cell area, in
+the years of the model)}
 
 \item{input}{name of an input dataset, options: "magpie", "witch"}
 
@@ -24,9 +30,11 @@ dataset is used, in between harmonize between the two datasets}
 
 \item{yearsSubset}{vector of years to keep in the output dataset}
 
-\item{harmonization}{name of harmonization method, see \code{\link{toolGetHarmonizer}}}
+\item{harmonization}{name of harmonization method, see \code{\link{toolGetHarmonizer}}, or "none"
+(only with \code{downscaling = "transitions"})}
 
-\item{downscaling}{name of downscaling method, currently only "magpieClassic"}
+\item{downscaling}{name of downscaling method: "proportional" (\code{luscale::interpolate2}) or "transitions"
+(\code{\link{calcLandTransitionsHighRes}}, or \code{\link{toolDownscaleTransitions}} on harmonised states)}
 }
 \value{
 land use data
@@ -35,5 +43,5 @@ land use data
 Convert the downscaled land use data to the format required by the given project.
 }
 \author{
-Pascal Sauer
+Pascal Sauer, Patrick v. Jeetze
 }

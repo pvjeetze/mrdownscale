@@ -22,10 +22,12 @@ Depends:
     R (>= 4.0.0)
 Imports:
     gdx2,
+    gms,
     luscale (>= 3.1.4),
     magpie4 (>= 2.34.1),
     mip,
     ncdf4,
+    stats,
     terra,
     utils,
     withr

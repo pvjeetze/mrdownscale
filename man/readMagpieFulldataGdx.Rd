@@ -8,11 +8,15 @@ readMagpieFulldataGdx(subtype)
 }
 \arguments{
 \item{subtype}{type of data to be read in. Available options are
-land, crop, woodHarvestWeight, woodHarvestArea, fertilizerRegional, clustermap}
+land, crop, woodHarvestWeight, woodHarvestArea, fertilizerRegional, clustermap, and for the
+downscaling along the transitions of the model (lists of gdx symbols at cluster level):
+landAccounting (cluster land by type and sub-type, upper bounds of the land transitions), landTransitions,
+ageClasses and ageClassTransitions (\code{magpie4::landTransitions}, \code{magpie4::ageClasses},
+\code{magpie4::ageClassTransitions}), peatland, landConservation, snv, bii, climateFixYear}
 }
 \description{
 Read function for data coming from the MAgPIE model.
 }
 \author{
-Pascal Sauer, Jan Philipp Dietrich
+Pascal Sauer, Jan Philipp Dietrich, Patrick v. Jeetze
 }

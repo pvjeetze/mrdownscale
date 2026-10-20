@@ -8,8 +8,9 @@ fullDOWNSCALEDMAGPIE(
   rev = numeric_version("0"),
   harmonizationPeriod = c(2015, 2050),
   target = "landuseinit",
-  downscaling = "magpieClassic",
-  harmonization = "fade"
+  downscaling = "transitions",
+  harmonization = "none",
+  product = "land"
 )
 }
 \arguments{
@@ -18,20 +19,43 @@ When called via madrat::retrieveData rev will be converted to numeric_version.}
 
 \item{harmonizationPeriod}{Two integer values, before the first given
 year the target dataset is used, after the second given year the input
-dataset is used, in between harmonize between the two datasets}
+dataset is used, in between harmonize between the two datasets (not used with harmonization "none")}
 
 \item{target}{Name of dataset to be used as harmonization target and downscaling reference}
 
-\item{downscaling}{name of downscaling method, currently only "magpieClassic"}
+\item{downscaling}{name of downscaling method: "proportional" or "transitions", see details}
 
-\item{harmonization}{name of harmonization method, see \code{\link{toolGetHarmonizer}}}
+\item{harmonization}{name of harmonization method, see \code{\link{toolGetHarmonizer}}; "none" (only
+with "transitions", the only method available there)}
+
+\item{product}{the product to write with "transitions": "land", "BII", "landConservation" or
+"ageClasses", see details}
 }
 \description{
-Run the pipeline to generate harmonized and downscaled MAgPIE data using
-landuseinit as a reference dataset. Write output in the format of
-avl_land_t_0.5.mz, full report on consistency checks is printed and
-written to report.log.
+Run the pipeline to generate downscaled MAgPIE data on the 0.5 degree grid of the land-use
+initialisation (landuseinit). Full report on consistency checks is printed and written to
+consistencyCheck.log.
+}
+\details{
+With \code{downscaling = "proportional"}, the land of the run is harmonised with
+landuseinit and downscaled with \code{luscale::interpolate2}; the output is
+\code{cell.land_0.5.mz} in the format of avl_land_t_0.5.mz.
+
+With \code{downscaling = "transitions"} (the default), the transitions of the run are allocated to
+the grid cells (\code{\link{calcLandTransitionsHighRes}}) without harmonisation (\code{harmonization =
+"none"}, the model starts from landuseinit). The product is selected with \code{product}:
+\itemize{
+  \item land: \code{cell.land_0.5.mz}, \code{cell.land_split_0.5.mz} (and their shares),
+  \code{cell.croparea_0.5_share.mz}, \code{cell.land_transitions_0.5.mz}, \code{cell.peatland_0.5.mz}
+  (and its share; from \code{s58_fix_peatland}), \code{cell.land_diagnostics.csv},
+  \code{cell.land_constraint_excess.csv}, \code{cell.land_transition_change.csv},
+  \code{cell.peatland_excess.csv};
+  \item BII: \code{cell.bii_0.5.mz};
+  \item landConservation: \code{cell.conservation_land_0.5.mz};
+  \item ageClasses: \code{cell.ageclass_<type>_0.5_share.mz} for secdforest, forestry and other land, and
+  \code{cell.ageclass_diagnostics.csv}.
+}
 }
 \author{
-Pascal Sauer
+Pascal Sauer, Patrick v. Jeetze
 }

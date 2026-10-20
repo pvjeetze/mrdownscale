@@ -13,7 +13,8 @@
 #' dataset is used, in between harmonize between the two datasets
 #' @param yearsSubset remove years from the returned data which are not in yearsSubset
 #' @param harmonization name of harmonization method, see \code{\link{toolGetHarmonizer}}
-#' @param downscaling name of downscaling method, currently only "magpieClassic"
+#' @param downscaling name of downscaling method: "proportional" (\code{luscale::interpolate2}) or "transitions"
+#' (\code{\link{toolDownscaleTransitions}})
 #' @param compression compression level of the resulting .nc files, possible values are integers from 1-9,
 #' 1 = fastest, 9 = best compression
 #' @param progress boolean defining whether progress should be printed
@@ -22,7 +23,7 @@
 fullSCENARIOMIP <- function(rev = numeric_version("0"), input = "magpie", scenario = "",
                             harmonizationPeriod = c(2025, 2050),
                             yearsSubset = 1995:2100,
-                            harmonization = "fadeForest", downscaling = "magpieClassic",
+                            harmonization = "fadeForest", downscaling = "proportional",
                             compression = 2, progress = TRUE) {
   revision <- if (identical(rev, numeric_version("0"))) format(Sys.time(), "%Y-%m-%d") else rev
 

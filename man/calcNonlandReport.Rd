@@ -23,7 +23,8 @@ dataset is used, in between harmonize between the two datasets}
 
 \item{harmonization}{name of harmonization method, see \code{\link{toolGetHarmonizer}}}
 
-\item{downscaling}{name of downscaling method, currently only "magpieClassic"}
+\item{downscaling}{name of downscaling method: "proportional" (\code{luscale::interpolate2}) or "transitions"
+(\code{\link{toolDownscaleTransitions}})}
 }
 \value{
 nonland data
@@ -35,7 +36,7 @@ Convert the downscaled nonland data to the format required by the given project.
 \dontrun{
   calcOutput("NonlandReport", outputFormat = "ESM",
              harmonizationPeriod = c(2015, 2050), yearsSubset = 2015:2100,
-             harmonization = "fade", downscaling = "magpieClassic")
+             harmonization = "fade", downscaling = "proportional")
 }
 }
 \author{

@@ -8,14 +8,15 @@
 #' dataset is used, in between harmonize between the two datasets
 #' @param yearsSubset vector of years to keep in the output dataset
 #' @param harmonization name of harmonization method, see \code{\link{toolGetHarmonizer}}
-#' @param downscaling name of downscaling method, currently only "magpieClassic"
+#' @param downscaling name of downscaling method: "proportional" (\code{luscale::interpolate2}) or "transitions"
+#' (\code{\link{toolDownscaleTransitions}})
 #' @return nonland data
 #'
 #' @examples
 #' \dontrun{
 #'   calcOutput("NonlandReport", outputFormat = "ESM",
 #'              harmonizationPeriod = c(2015, 2050), yearsSubset = 2015:2100,
-#'              harmonization = "fade", downscaling = "magpieClassic")
+#'              harmonization = "fade", downscaling = "proportional")
 #' }
 #' @author Pascal Sauer
 calcNonlandReport <- function(outputFormat, harmonizationPeriod, yearsSubset, harmonization, downscaling) {

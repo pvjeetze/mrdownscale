@@ -9,7 +9,8 @@
 #' dataset is used, in between harmonize between the two datasets
 #' @param yearsSubset remove years from the returned data which are not in yearsSubset
 #' @param harmonization name of harmonization method, see \code{\link{toolGetHarmonizer}}
-#' @param downscaling name of downscaling method, currently only "magpieClassic"
+#' @param downscaling name of downscaling method: "proportional" (\code{luscale::interpolate2}) or "transitions"
+#' (\code{\link{toolDownscaleTransitions}})
 #' @return data prepared to be written as a LUH-style transitions.nc file
 #' @author Pascal Sauer, Jan Philipp Dietrich
 calcTransitionsNC <- function(outputFormat, input, harmonizationPeriod, yearsSubset, harmonization, downscaling) {

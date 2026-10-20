@@ -11,7 +11,7 @@ fullSCENARIOMIP(
   harmonizationPeriod = c(2025, 2050),
   yearsSubset = 1995:2100,
   harmonization = "fadeForest",
-  downscaling = "magpieClassic",
+  downscaling = "proportional",
   compression = 2,
   progress = TRUE
 )
@@ -32,7 +32,8 @@ dataset is used, in between harmonize between the two datasets}
 
 \item{harmonization}{name of harmonization method, see \code{\link{toolGetHarmonizer}}}
 
-\item{downscaling}{name of downscaling method, currently only "magpieClassic"}
+\item{downscaling}{name of downscaling method: "proportional" (\code{luscale::interpolate2}) or "transitions"
+(\code{\link{toolDownscaleTransitions}})}
 
 \item{compression}{compression level of the resulting .nc files, possible values are integers from 1-9,
 1 = fastest, 9 = best compression}

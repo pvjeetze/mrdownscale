@@ -11,7 +11,8 @@
 #' dataset is used, in between harmonize between the two datasets
 #' @param yearsSubset vector of years to keep in the output dataset
 #' @param harmonization name of harmonization method, see \code{\link{toolGetHarmonizer}}
-#' @param downscaling name of downscaling method, currently only "magpieClassic"
+#' @param downscaling name of downscaling method: "proportional" (\code{luscale::interpolate2}) or "transitions"
+#' (\code{\link{toolDownscaleTransitions}})
 #' @param gross either boolean or a magpie object containing bidirectional
 #' transition shares relative to the area of the involved land pools (transition
 #' divided by the area of the land pool in the "from" sub dimension). If set to
@@ -44,7 +45,7 @@ calcLandTransitions <- function(outputFormat, input, harmonizationPeriod, yearsS
   tempfolder <- withr::local_tempdir()
   for (i in sequence) {
     i2 <- min(nyears(land), i + l)
-    transition <- toolTransitionsBasic(land[, i:i2, ], gross = gross)
+    transition <- toolMinimalTransitions(land[, i:i2, ], gross = gross)
 
     # check if the calculated transition is consistent with the states (land)
     netChangeLand <- setYears(land[, (i + 1):i2, ], getYears(land)[i:(i2 - 1)]) - land[, i:(i2 - 1), ]

@@ -1,9 +1,9 @@
-#' toolTransitionsBasic
+#' toolMinimalTransitions
 #'
-#' tool function to extract transitions between categories from a land
-#' data set with at least 2 time steps. The approach is rather simplistic by
-#' assuming that expansion happens proportionally in all affected classes (equal
-#' preference of transitions across all categories).
+#' Transitions between land categories from the change of their states (a land data set with at least
+#' 2 time steps), for data with states only. The net loss of each category goes to the categories with
+#' a net gain, in proportion to their gain; this is the smallest gross change that gives the states
+#' (equal preference of transitions across all categories). Transitions to primf and primn are removed.
 #'
 #' In addition to the net effect it can also estimate gross transition. For that
 #' purpose a reference data set containing bidirectional transition shares
@@ -24,10 +24,11 @@
 #' FALSE only net transitions will be returned. If set to TRUE an internal
 #' gross transition estimate based on average gross transitions in LUH2 in the
 #' period from 1995 to 2015 will be used.
-#' @author Jan Philipp Dietrich
+#' @author Jan Philipp Dietrich, Patrick v. Jeetze
+#' @seealso \code{\link{toolDownscaleTransitions}}
 #' @export
 
-toolTransitionsBasic <- function(x, gross = FALSE) {
+toolMinimalTransitions <- function(x, gross = FALSE) {
   stopifnot(nyears(x) >= 2)
   # assign transitions of a period to the first year in this transition period
   years <- paste0("y", getYears(x, as.integer = TRUE)[1:(nyears(x) - 1)] + 1)

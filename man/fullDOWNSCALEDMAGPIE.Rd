@@ -28,8 +28,8 @@ dataset is used, in between harmonize between the two datasets (not used with ha
 \item{harmonization}{name of harmonization method, see \code{\link{toolGetHarmonizer}}; "none" (only
 with "transitions", the only method available there)}
 
-\item{product}{the product to write with "transitions": "land", "BII", "landConservation" or
-"ageClasses", see details}
+\item{product}{the products to write with "transitions", one or more of "land", "BII",
+"landConservation" and "ageClasses", see details}
 }
 \description{
 Run the pipeline to generate downscaled MAgPIE data on the 0.5 degree grid of the land-use
@@ -43,7 +43,7 @@ landuseinit and downscaled with \code{luscale::interpolate2}; the output is
 
 With \code{downscaling = "transitions"} (the default), the transitions of the run are allocated to
 the grid cells (\code{\link{calcLandTransitionsHighRes}}) without harmonisation (\code{harmonization =
-"none"}, the model starts from landuseinit). The product is selected with \code{product}:
+"none"}, the model starts from landuseinit). The products are selected with \code{product}:
 \itemize{
   \item land: \code{cell.land_0.5.mz}, \code{cell.land_split_0.5.mz} (and their shares),
   \code{cell.croparea_0.5_share.mz}, \code{cell.land_transitions_0.5.mz}, \code{cell.peatland_0.5.mz}

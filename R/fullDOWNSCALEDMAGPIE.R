@@ -10,7 +10,7 @@
 #'
 #' With \code{downscaling = "transitions"} (the default), the transitions of the run are allocated to
 #' the grid cells (\code{\link{calcLandTransitionsHighRes}}) without harmonisation (\code{harmonization =
-#' "none"}, the model starts from landuseinit). The product is selected with \code{product}:
+#' "none"}, the model starts from landuseinit). The products are selected with \code{product}:
 #' \itemize{
 #'   \item land: \code{cell.land_0.5.mz}, \code{cell.land_split_0.5.mz} (and their shares),
 #'   \code{cell.croparea_0.5_share.mz}, \code{cell.land_transitions_0.5.mz}, \code{cell.peatland_0.5.mz}
@@ -32,8 +32,8 @@
 #' @param downscaling name of downscaling method: "proportional" or "transitions", see details
 #' @param harmonization name of harmonization method, see \code{\link{toolGetHarmonizer}}; "none" (only
 #' with "transitions", the only method available there)
-#' @param product the product to write with "transitions": "land", "BII", "landConservation" or
-#' "ageClasses", see details
+#' @param product the products to write with "transitions", one or more of "land", "BII",
+#' "landConservation" and "ageClasses", see details
 #'
 #' @author Pascal Sauer, Patrick v. Jeetze
 fullDOWNSCALEDMAGPIE <- function(rev = numeric_version("0"), # nolint: cyclocomp_linter
@@ -57,8 +57,13 @@ fullDOWNSCALEDMAGPIE <- function(rev = numeric_version("0"), # nolint: cyclocomp
                       harmonization = harmonization, downscaling = downscaling, aggregate = FALSE))
   }
 
+  unknown <- setdiff(product, c("land", "BII", "landConservation", "ageClasses"))
+  if (length(unknown) > 0) {
+    stop("Unsupported product \"", paste(unknown, collapse = "\", \""), "\"")
+  }
+
   if (downscaling == "proportional") {
-    if (product != "land") {
+    if (!identical(product, "land")) {
       stop("downscaling = \"proportional\" gives only the product \"land\"")
     }
     if (harmonization == "none") {
@@ -73,71 +78,75 @@ fullDOWNSCALEDMAGPIE <- function(rev = numeric_version("0"), # nolint: cyclocomp
     stop("Unsupported downscaling method \"", downscaling, "\"")
   } else if (harmonization != "none") {
     stop("downscaling = \"transitions\" is available only with harmonization = \"none\"")
-  } else if (product == "land") {
-    land <- calcOutput("LandTransitionsHighRes", input = "magpie", aggregate = FALSE)
-    .write(land[["transitionsHr"]], "cell.land_transitions_0.5.mz",
-           comment = "unit: Mha per grid-cell and time step, gross transitions by stage of the step")
-    utils::write.csv(land[["diagnostics"]], "cell.land_diagnostics.csv", row.names = FALSE)
-    if (!is.null(land[["excess"]])) {
-      utils::write.csv(land[["excess"]], "cell.land_constraint_excess.csv", row.names = FALSE)
-    }
-    if (!is.null(land[["transitionChange"]])) {
-      utils::write.csv(land[["transitionChange"]], "cell.land_transition_change.csv", row.names = FALSE)
-    }
-
-    if (!is.null(land[["peatlandHr"]])) {
-      # peatland from the year in which the model starts to change it
-      firstYear <- readSource("MagpieRunFiles", subtype = "config")[["gms"]][["s58_fix_peatland"]]
-      peatHr <- land[["peatlandHr"]]
-      peatHr <- peatHr[, getYears(peatHr, as.integer = TRUE) >= firstYear, ]
-      utils::write.csv(land[["peatlandExcess"]], "cell.peatland_excess.csv", row.names = FALSE)
-      .write(peatHr, "cell.peatland_0.5.mz", comment = "unit: Mha per grid-cell")
-      # share of the grid cell area (area of a 0.5 degree grid cell in Mha)
-      coords <- toolGetMappingCoord2Country(pretty = TRUE)
-      cellAreaHr <- new.magpie(cells_and_regions = coords[["coords"]],
-                               fill = 1e-10 * (111.263 * 1000 * 0.5)^2 * cos(coords[["lat"]] * pi / 180))
-      peatShareHr <- peatHr / cellAreaHr
-      peatShareHr[is.nan(peatShareHr) | is.infinite(peatShareHr)] <- 0
-      .write(peatShareHr, "cell.peatland_0.5_share.mz", comment = "unit: grid-cell area fraction")
-    }
-    rm(land)
-
-    .write(.report("downscaledmagpieCroparea"), "cell.croparea_0.5_share.mz",
-           comment = "unit: croparea fractions of total grid-cell")
-    landSplitHr <- .report("downscaledmagpieSplit")
-    landHr <- .report("downscaledmagpie")
-    .write(landSplitHr, "cell.land_split_0.5.mz", comment = "unit: Mha per grid-cell")
-    .write(landSplitHr / dimSums(landSplitHr, dim = 3), "cell.land_split_0.5_share.mz",
-           comment = "unit: grid-cell land area fraction")
-    .write(landHr, "cell.land_0.5.mz", comment = "unit: Mha per grid-cell")
-    .write(landHr / dimSums(landHr, dim = 3), "cell.land_0.5_share.mz", comment = "unit: grid-cell land area fraction")
-  } else if (product == "BII") {
-    .write(calcOutput("BIIHighRes", input = "magpie", aggregate = FALSE), "cell.bii_0.5.mz", comment = "unitless")
-  } else if (product == "landConservation") {
-    if (!"wdpa" %in% readSource("MagpieRunFiles", subtype = "available")) {
-      stop("the run has no land conservation data (wdpa_baseline_0.5.mz)")
-    }
-    .write(calcOutput("LandConservationHighRes", input = "magpie", onLand = TRUE, aggregate = FALSE),
-           "cell.conservation_land_0.5.mz", comment = "unit: Mha per grid-cell")
-  } else if (product == "ageClasses") {
-    ageClasses <- calcOutput("AgeClassesReport", outputFormat = "downscaledmagpie", input = "magpie",
-                             aggregate = FALSE)
-    diagnostics <- ageClasses[["diagnostics"]]
-    utils::write.csv(diagnostics, "cell.ageclass_diagnostics.csv", row.names = FALSE)
-    message("Largest deviation of the grid cell area from the grid cell land: ",
-            signif(max(diagnostics[["gridCellDeviation"]]), 3),
-            " Mha; summed deviation of the cluster age classes from the model: ",
-            signif(max(diagnostics[["clusterDeviation"]]), 3), " Mha in a year and land type")
-    # one file per land type: the memory use of write.magpie() grows with the number of items
-    longName <- c(secdforest = "secondary forest", forestry = "forestry", other = "other land")
-    for (type in names(longName)) {
-      .write(ageClasses[[type]], paste0("cell.ageclass_", type, "_0.5_share.mz"),
-             comment = paste0("unit: share of ", longName[[type]], " area in each age class"))
-      ageClasses[[type]] <- NULL
-      gc(verbose = FALSE)
-    }
   } else {
-    stop("Unsupported product \"", product, "\"")
+    if ("land" %in% product) {
+      land <- calcOutput("LandTransitionsHighRes", input = "magpie", aggregate = FALSE)
+      .write(land[["transitionsHr"]], "cell.land_transitions_0.5.mz",
+             comment = "unit: Mha per grid-cell and time step, gross transitions by stage of the step")
+      utils::write.csv(land[["diagnostics"]], "cell.land_diagnostics.csv", row.names = FALSE)
+      if (!is.null(land[["excess"]])) {
+        utils::write.csv(land[["excess"]], "cell.land_constraint_excess.csv", row.names = FALSE)
+      }
+      if (!is.null(land[["transitionChange"]])) {
+        utils::write.csv(land[["transitionChange"]], "cell.land_transition_change.csv", row.names = FALSE)
+      }
+
+      if (!is.null(land[["peatlandHr"]])) {
+        # peatland from the year in which the model starts to change it
+        firstYear <- readSource("MagpieRunFiles", subtype = "config")[["gms"]][["s58_fix_peatland"]]
+        peatHr <- land[["peatlandHr"]]
+        peatHr <- peatHr[, getYears(peatHr, as.integer = TRUE) >= firstYear, ]
+        utils::write.csv(land[["peatlandExcess"]], "cell.peatland_excess.csv", row.names = FALSE)
+        .write(peatHr, "cell.peatland_0.5.mz", comment = "unit: Mha per grid-cell")
+        # share of the grid cell area (area of a 0.5 degree grid cell in Mha)
+        coords <- toolGetMappingCoord2Country(pretty = TRUE)
+        cellAreaHr <- new.magpie(cells_and_regions = coords[["coords"]],
+                                 fill = 1e-10 * (111.263 * 1000 * 0.5)^2 * cos(coords[["lat"]] * pi / 180))
+        peatShareHr <- peatHr / cellAreaHr
+        peatShareHr[is.nan(peatShareHr) | is.infinite(peatShareHr)] <- 0
+        .write(peatShareHr, "cell.peatland_0.5_share.mz", comment = "unit: grid-cell area fraction")
+      }
+      rm(land)
+
+      .write(.report("downscaledmagpieCroparea"), "cell.croparea_0.5_share.mz",
+             comment = "unit: croparea fractions of total grid-cell")
+      landSplitHr <- .report("downscaledmagpieSplit")
+      landHr <- .report("downscaledmagpie")
+      .write(landSplitHr, "cell.land_split_0.5.mz", comment = "unit: Mha per grid-cell")
+      .write(landSplitHr / dimSums(landSplitHr, dim = 3), "cell.land_split_0.5_share.mz",
+             comment = "unit: grid-cell land area fraction")
+      .write(landHr, "cell.land_0.5.mz", comment = "unit: Mha per grid-cell")
+      .write(landHr / dimSums(landHr, dim = 3), "cell.land_0.5_share.mz",
+             comment = "unit: grid-cell land area fraction")
+    }
+    if ("BII" %in% product) {
+      .write(calcOutput("BIIHighRes", input = "magpie", aggregate = FALSE), "cell.bii_0.5.mz", comment = "unitless")
+    }
+    if ("landConservation" %in% product) {
+      if (!"wdpa" %in% readSource("MagpieRunFiles", subtype = "available")) {
+        stop("the run has no land conservation data (wdpa_baseline_0.5.mz)")
+      }
+      .write(calcOutput("LandConservationHighRes", input = "magpie", onLand = TRUE, aggregate = FALSE),
+             "cell.conservation_land_0.5.mz", comment = "unit: Mha per grid-cell")
+    }
+    if ("ageClasses" %in% product) {
+      ageClasses <- calcOutput("AgeClassesReport", outputFormat = "downscaledmagpie", input = "magpie",
+                               aggregate = FALSE)
+      diagnostics <- ageClasses[["diagnostics"]]
+      utils::write.csv(diagnostics, "cell.ageclass_diagnostics.csv", row.names = FALSE)
+      message("Largest deviation of the grid cell area from the grid cell land: ",
+              signif(max(diagnostics[["gridCellDeviation"]]), 3),
+              " Mha; summed deviation of the cluster age classes from the model: ",
+              signif(max(diagnostics[["clusterDeviation"]]), 3), " Mha in a year and land type")
+      # one file per land type: the memory use of write.magpie() grows with the number of items
+      longName <- c(secdforest = "secondary forest", forestry = "forestry", other = "other land")
+      for (type in names(longName)) {
+        .write(ageClasses[[type]], paste0("cell.ageclass_", type, "_0.5_share.mz"),
+               comment = paste0("unit: share of ", longName[[type]], " area in each age class"))
+        ageClasses[[type]] <- NULL
+        gc(verbose = FALSE)
+      }
+    }
   }
 
   toolWriteMadratLog(logPath = "consistencyCheck.log")

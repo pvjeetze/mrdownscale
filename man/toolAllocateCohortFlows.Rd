@@ -14,17 +14,16 @@ toolAllocateCohortFlows(
 )
 }
 \arguments{
-\item{stockHr}{Numeric matrix of the stock of each grid cell (grid cells x cohorts) with grid cell names as row
-names and cohort names as column names.}
+\item{stockHr}{magclass object of the stock of each grid cell (grid cells x cohorts), without year.}
 
-\item{flowLr}{Numeric matrix of the flow of each unit (units x cohorts) with unit
-names as row names and the column names of \code{stockHr}.}
+\item{flowLr}{magclass object of the flow of each unit (units x the cohorts of \code{stockHr}), without year.}
 
 \item{mapping}{Data frame of the grid cells and their coarse units, as the clustermap of a MAgPIE run,
 with the columns \code{cell} (names of the grid cells) and \code{cluster} (names of the coarse units). The
-grid cells are matched by name (row names of a matrix, cell names of a magclass object).}
+grid cells are matched by name.}
 
-\item{totalHr}{Optional numeric vector with the total flow of each grid cell.}
+\item{totalHr}{Optional magclass object with the total flow of each grid cell (the grid cells of
+\code{stockHr} in its order, one item).}
 
 \item{tol}{Tolerance for the unit flows of the cohorts (absolute, in the measure of
 \code{flowLr}).}
@@ -32,7 +31,7 @@ grid cells are matched by name (row names of a matrix, cell names of a magclass 
 \item{maxIter}{Maximum number of iterations.}
 }
 \value{
-Numeric matrix of the grid cell flows (grid cells x cohorts).
+magclass object of the grid cell flows with the dimensions of \code{stockHr}.
 }
 \description{
 Distributes flows of cohorts (for example age classes of a land type) of coarse units (Lr, for
@@ -63,10 +62,11 @@ The flow of a grid cell and cohort never exceeds its stock. A unit flow above th
 a cohort, and a grid cell total above the grid cell stock, are not allocated.
 }
 \examples{
-stockHr <- matrix(c(1, 0, 1, 1), 2, 2, byrow = TRUE, dimnames = list(c("c1", "c2"), c("ac0", "ac5")))
-flowLr <- matrix(c(0.5, 0.5), 1, dimnames = list("A", c("ac0", "ac5")))
+stockHr <- new.magpie(c("c1", "c2"), NULL, c("ac0", "ac5"), fill = c(1, 1, 0, 1))
+flowLr <- new.magpie("A", NULL, c("ac0", "ac5"), fill = c(0.5, 0.5))
+totalHr <- new.magpie(c("c1", "c2"), NULL, fill = c(0.5, 0.5))
 # grid cell 1 has no stock of ac5, so its total of 0.5 must come from ac0
-toolAllocateCohortFlows(stockHr, flowLr, data.frame(cell = c("c1", "c2"), cluster = "A"), totalHr = c(0.5, 0.5))
+toolAllocateCohortFlows(stockHr, flowLr, data.frame(cell = c("c1", "c2"), cluster = "A"), totalHr)
 }
 \seealso{
 \code{\link{toolShiftCohorts}}, \code{\link{calcAgeClassesHighRes}}

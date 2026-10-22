@@ -14,7 +14,8 @@
 #' \itemize{
 #'   \item land: \code{cell.land_0.5.mz}, \code{cell.land_split_0.5.mz} (and their shares),
 #'   \code{cell.croparea_0.5_share.mz}, \code{cell.land_transitions_0.5.mz}, \code{cell.peatland_0.5.mz}
-#'   (and its share; from \code{s58_fix_peatland}), \code{cell.land_diagnostics.csv},
+#'   (and its share of the geometric grid cell area; from \code{s58_fix_peatland}),
+#'   \code{cell.land_diagnostics.csv},
 #'   \code{cell.land_constraint_excess.csv}, \code{cell.land_transition_change.csv},
 #'   \code{cell.peatland_excess.csv};
 #'   \item BII: \code{cell.bii_0.5.mz};
@@ -98,7 +99,8 @@ fullDOWNSCALEDMAGPIE <- function(rev = numeric_version("0"), # nolint: cyclocomp
         peatHr <- peatHr[, getYears(peatHr, as.integer = TRUE) >= firstYear, ]
         utils::write.csv(land[["peatlandExcess"]], "cell.peatland_excess.csv", row.names = FALSE)
         .write(peatHr, "cell.peatland_0.5.mz", comment = "unit: Mha per grid-cell")
-        # share of the grid cell area (area of a 0.5 degree grid cell in Mha)
+        # share of the geometric area of the grid cell (111.263 km per degree, scaled by the cosine of the
+        # latitude), unlike the land shares, which are shares of the grid cell land
         coords <- toolGetMappingCoord2Country(pretty = TRUE)
         cellAreaHr <- new.magpie(cells_and_regions = coords[["coords"]],
                                  fill = 1e-10 * (111.263 * 1000 * 0.5)^2 * cos(coords[["lat"]] * pi / 180))

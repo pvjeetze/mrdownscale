@@ -26,6 +26,9 @@
 #' toolGriddedLandOrigin(transitions, initial, "other")
 #' @export
 toolGriddedLandOrigin <- function(transitionsHr, startHr, types, order = "newest") {
+  # The area by origin and year of entry is kept on arrays: the outflow takes the entries one by one, and
+  # assigning these slices to a magclass object in a loop takes about 4000 times as long.
+
   # One stage of toolGriddedLandOrigin (area: list by tracked type; flows: grid cells x transitions of the stage). The
   # outflow comes from the area at the start of the stage, and beyond it from the inflow of the stage
   # (area passing through); it is carried to tracked types with its origin. Inflow enters at entry.

@@ -34,7 +34,8 @@ calcBIIHighRes <- function(input, harmonization = "none") {
 
     shareHr <- mbind(landHr[, , "past", invert = TRUE],
                      collapseNames(landHr[, , "past"]) * sideLayersHr[, , c("manpast", "rangeland")])
-    shareHr <- shareHr / (dimSums(shareHr, dim = 3) + 1e-10)
+    shareHr <- shareHr / dimSums(shareHr, dim = 3)
+    shareHr[is.nan(shareHr)] <- 0
     shareHr <- magpie4::PrimSecdOtherLand(shareHr, landStartHr)
     shareHr <- shareHr * sideLayersHr[, , c("forested", "nonforested")]
   } else {

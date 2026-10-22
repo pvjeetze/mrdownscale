@@ -8,7 +8,8 @@ calcAgeClassesReport(outputFormat, input, harmonization = "none")
 }
 \arguments{
 \item{outputFormat}{"downscaledmagpie": for each group the share of its area in each age class (NA
-where the grid cell has no area of the group), and the diagnostics}
+where the grid cell has less than 1e-9 Mha of the group, where the composition is undefined), and the
+diagnostics}
 
 \item{input}{name of an input dataset, options: "magpie", "witch"}
 

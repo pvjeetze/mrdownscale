@@ -131,22 +131,13 @@ calcLandConservationHighRes <- function(input, onLand = FALSE, harmonization = "
     landGroupHr <- .groupSums(landHr, groups)
     getSets(landGroupHr) <- getSets(dataGroupHr)
 
-    groupNames <- names(groups)
-    protectedGroupHr <- dataGroupHr
-    for (year in years) {
-      landYear <- matrix(as.array(landGroupHr[, year, groupNames]), length(cells), dimnames = list(cells, groupNames))
-      dataYear <- matrix(as.array(dataGroupHr[, year, groupNames]), length(cells), dimnames = list(cells, groupNames))
-      modelCluster <- matrix(as.array(modelGroupLr[, year, groupNames]), ncol = length(groupNames),
-                             dimnames = list(getItems(modelGroupLr, dim = 1), groupNames))
-      # the conservation of each unit: first in the grid cells with conservation in the data, in
-      # proportion to it, up to their land, then the rest in the other grid cells, in proportion to their land
-      protectedGroupHr[, year, groupNames] <- toolAllocateByFilling(modelCluster, pmin(dataYear, landYear), landYear,
-                                                                    mapping)
-    }
+    # the conservation of each unit: first in the grid cells with conservation in the data, in proportion to
+    # it, up to their land, then the rest in the other grid cells, in proportion to their land
+    protectedGroupHr <- toolAllocateByFilling(modelGroupLr, pmin(dataGroupHr, landGroupHr), landGroupHr, mapping)
 
     # the conservation of a group split over its types as the land of the grid cell
     conservationHr[, , ] <- 0
-    for (group in groupNames) {
+    for (group in names(groups)) {
       types <- groups[[group]]
       share <- landHr[, , types] / dimSums(landHr[, , types], dim = 3)
       share[is.na(share)] <- 0

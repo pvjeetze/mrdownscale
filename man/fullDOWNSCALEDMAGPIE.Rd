@@ -47,7 +47,8 @@ the grid cells (\code{\link{calcLandTransitionsHighRes}}) without harmonisation 
 \itemize{
   \item land: \code{cell.land_0.5.mz}, \code{cell.land_split_0.5.mz} (and their shares),
   \code{cell.croparea_0.5_share.mz}, \code{cell.land_transitions_0.5.mz}, \code{cell.peatland_0.5.mz}
-  (and its share; from \code{s58_fix_peatland}), \code{cell.land_diagnostics.csv},
+  (and its share of the geometric grid cell area; from \code{s58_fix_peatland}),
+  \code{cell.land_diagnostics.csv},
   \code{cell.land_constraint_excess.csv}, \code{cell.land_transition_change.csv},
   \code{cell.peatland_excess.csv};
   \item BII: \code{cell.bii_0.5.mz};

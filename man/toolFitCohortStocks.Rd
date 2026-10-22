@@ -7,22 +7,21 @@
 toolFitCohortStocks(stockHr, stockLr, mapping, tol = 1e-08, maxIter = 200)
 }
 \arguments{
-\item{stockHr}{Numeric matrix of the stock of each grid cell (grid cells x cohorts) with grid cell names as row
-names and cohort names as column names.}
+\item{stockHr}{magclass object of the stock of each grid cell (grid cells x cohorts), without year.}
 
-\item{stockLr}{Numeric matrix of the stock of each unit (units x cohorts) with unit names
-as row names and the column names of \code{stockHr}.}
+\item{stockLr}{magclass object of the stock of each unit (units x the cohorts of \code{stockHr}), without
+year.}
 
 \item{mapping}{Data frame of the grid cells and their coarse units, as the clustermap of a MAgPIE run,
 with the columns \code{cell} (names of the grid cells) and \code{cluster} (names of the coarse units). The
-grid cells are matched by name (row names of a matrix, cell names of a magclass object).}
+grid cells are matched by name.}
 
 \item{tol}{Tolerance for the stocks of the units (absolute, in the measure of \code{stockLr}).}
 
 \item{maxIter}{Maximum number of iterations.}
 }
 \value{
-Numeric matrix of the fitted grid cell stocks (grid cells x cohorts).
+magclass object of the fitted grid cell stocks with the dimensions of \code{stockHr}.
 }
 \description{
 Fits the stock of each grid cell (Hr) by cohort to the stock of its coarse unit (Lr) by cohort (for
@@ -43,8 +42,8 @@ area that the fit moves between cohorts, \code{sum(abs(result - stockHr)) / 2}, 
 the grid cell flows and the stocks of the units disagree.
 }
 \examples{
-stockHr <- matrix(c(1, 0, 0, 1), 2, 2, dimnames = list(c("c1", "c2"), c("ac0", "ac5")))
-stockLr <- matrix(c(0.5, 1.5), 1, dimnames = list("A", c("ac0", "ac5")))
+stockHr <- new.magpie(c("c1", "c2"), NULL, c("ac0", "ac5"), fill = c(1, 0, 0, 1))
+stockLr <- new.magpie("A", NULL, c("ac0", "ac5"), fill = c(0.5, 1.5))
 toolFitCohortStocks(stockHr, stockLr, data.frame(cell = c("c1", "c2"), cluster = "A"))
 }
 \seealso{

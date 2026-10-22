@@ -1,6 +1,11 @@
-# Cohorts and matrices of cohort stocks (grid cells c1, c2, ...) and unit flows (units A, B) by row.
+# Cohort stocks of the grid cells c1, c2, ... and unit flows of the units A, B as magclass objects without
+# year, values given grid cell by grid cell (unit by unit).
 cohorts <- c("ac0", "ac5", "ac10")
-cohortStock <- function(...) withCells(matrix(c(...), ncol = 3, byrow = TRUE, dimnames = list(NULL, cohorts)))
+cohortStock <- function(...) {
+  values <- matrix(c(...), ncol = 3, byrow = TRUE)
+  return(new.magpie(paste0("c", seq_len(nrow(values))), NULL, cohorts, fill = values))
+}
 cohortFlow <- function(...) {
-  return(matrix(c(...), ncol = 3, byrow = TRUE, dimnames = list(c("A", "B")[seq_len(length(c(...)) / 3)], cohorts)))
+  values <- matrix(c(...), ncol = 3, byrow = TRUE)
+  return(new.magpie(c("A", "B")[seq_len(nrow(values))], NULL, cohorts, fill = values))
 }

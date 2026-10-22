@@ -7,20 +7,20 @@
 toolShiftCohorts(stockHr, nShift)
 }
 \arguments{
-\item{stockHr}{Numeric matrix of the stock of each grid cell (grid cells x cohorts), cohorts ordered from
+\item{stockHr}{magclass object of the stock of each grid cell (grid cells x cohorts), cohorts ordered from
 young to old.}
 
 \item{nShift}{Number of cohorts to shift (a whole number of at least 0).}
 }
 \value{
-Numeric matrix of the shifted stock; the first \code{nShift} cohorts are empty.
+magclass object of the shifted stock; the first \code{nShift} cohorts are empty.
 }
 \description{
 Moves the stock of each cohort \code{nShift} cohorts on (for example age classes after a time
 step); the last cohort keeps its stock and takes the stock shifted beyond it.
 }
 \examples{
-toolShiftCohorts(matrix(c(1, 2, 3), 1, dimnames = list(NULL, c("ac0", "ac5", "acx"))), 1)
+toolShiftCohorts(new.magpie("c1", NULL, c("ac0", "ac5", "acx"), fill = c(1, 2, 3)), 1)
 }
 \seealso{
 \code{\link{toolAllocateCohortFlows}}

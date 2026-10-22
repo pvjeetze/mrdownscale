@@ -14,9 +14,10 @@ List with
 \item{mainOf}{named character vector: the land type of each sub-type (the type itself for land types
 without sub-types)}
 \item{mapping}{data frame with columns cell and cluster}
-\item{startHr}{numeric matrix of the grid cell state before the first year (grid cells x sub-types)}
-\item{statesLr}{numeric array of the unit states at the end of each year (units x sub-types x years)}
-\item{transitionsLr}{list by year of lists by stage of unit transitions (matrices units x "from.to")}
+\item{startHr}{magclass object of the grid cell state before the first year (grid cells x one year x
+sub-types)}
+\item{statesLr}{magclass object of the unit states at the end of each year (units x years x sub-types)}
+\item{transitionsLr}{magclass object of the unit transitions (units x years x "stage.from.to")}
 \item{splitLr}{named list of the unit compositions of items without transitions (magclass objects,
 units x years x parts), applied in order: cropland into crop area, fallow and tree cover, then crop
 area into crops by water supply}
@@ -40,7 +41,7 @@ Rules (see \code{\link{calcLandTransitionsHighRes}}):
   and optimisation), recoveryForestry on the inflow from forestry;
   \item the SNV relocation in proportion to the relocation target (\code{SNVTargetCropland_0.5.mz},
   interpolated for the SNV share of the run as \code{i29_snv_relocation_target}) not relocated in
-  earlier years;
+  earlier years, if the run has the target in its output folder;
   \item the land reduction on drained peat in proportion to the drained peat of the grid cells
   (peatland, updated each year by \code{\link{toolDownscalePeatland}});
   \item in the optimisation, urban land follows the 0.5 degree data of the run

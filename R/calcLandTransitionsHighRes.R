@@ -52,111 +52,50 @@ calcLandTransitionsHighRes <- function(input, target = "landuseinit", harmonizat
   # Weight of an outflow in proportion to amount per area; grid cells without amount take the rest (1e-6)
   # in proportion to their area.
   .perArea <- function(amount, area) {
-    return(ifelse(area > 0, amount / area, 0) + 1e-6)
+    weight <- amount / area
+    weight[area <= 0] <- 0
+    return(weight + 1e-6)
   }
 
   # Weight of the outflow of rule[["type"]] by its inflow in the previous year per area.
-  .previousInflowWeight <- function(rule, state, previousFlows) {
-    inflow <- 0
-    for (flows in previousFlows[rule[["fromStages"]]]) {
-      if (is.null(flows)) {
-        next
-      }
-      select <- sub("^.*[.]", "", colnames(flows)) == rule[["type"]]
-      if (!is.null(rule[["fromTypes"]])) {
-        select <- select & sub("[.].*$", "", colnames(flows)) %in% rule[["fromTypes"]]
-      }
-      inflow <- inflow + rowSums(flows[, select, drop = FALSE])
+  .previousInflowWeight <- function(rule, state, previous) {
+    select <- getItems(previous, dim = 3.1, full = TRUE) %in% rule[["fromStages"]] &
+      getItems(previous, dim = 3.3, full = TRUE) == rule[["type"]]
+    if (!is.null(rule[["fromTypes"]])) {
+      select <- select & getItems(previous, dim = 3.2, full = TRUE) %in% rule[["fromTypes"]]
     }
-    weight <- .perArea(inflow, state[, rule[["type"]]])
-    return(matrix(weight, ncol = 1, dimnames = list(NULL, rule[["type"]])))
+    inflow <- 0
+    if (any(select)) {
+      inflow <- setYears(dimSums(previous[, , select], dim = 3), NULL)
+    }
+    return(.perArea(inflow, state[, , rule[["type"]]]))
   }
 
-  # Grid cell area of land types, summed over their sub-types (grid cells x types).
-  .mainLand <- function(state, onTypes, mainOf) {
-    land <- matrix(0, nrow(state), length(onTypes), dimnames = list(rownames(state), onTypes))
+  # Grid cell area of land types, summed over their sub-types.
+  .mainLand <- function(state, onTypes) {
+    land <- list()
     for (k in onTypes) {
-      land[, k] <- rowSums(state[, names(mainOf)[mainOf == k], drop = FALSE])
+      land[[k]] <- setNames(dimSums(state[, , names(mainOf)[mainOf == k]], dim = 3), k)
     }
-    return(land)
+    return(mbind(land))
   }
 
   # Weight of the outflow of the sub-types of the land types with drained peat: the drained peat per area
-  # of the land type in the grid cell (peat: grid cells x categories).
-  .peatlandWeight <- function(state, peat, onTypes, mainOf) {
-    weight <- .perArea(peat[, onTypes, drop = FALSE], .mainLand(state, onTypes, mainOf))
+  # of the land type in the grid cell.
+  .peatlandWeight <- function(state, peat, onTypes) {
+    weight <- .perArea(peat[, , onTypes], .mainLand(state, onTypes))
     subTypes <- names(mainOf)[mainOf %in% onTypes]
-    weight <- weight[, mainOf[subTypes], drop = FALSE]
-    colnames(weight) <- subTypes
-    return(weight)
-  }
-
-  # =================================================================================================
-  # Outputs
-  # =================================================================================================
-
-  # Grid cell state by sub-type as magclass object with names "land.type" (type "total" for land types
-  # without sub-types), the start labelled y1985.
-  .landOutput <- function(state, mainOf, cells) {
-    out <- aperm(state, c(1, 3, 2))
-    dimnames(out) <- list(cells, c("y1985", dimnames(state)[[3]][-1]), unname(.typeLabels(mainOf)))
-    return(.asCellMagpie(out, "land.type"))
-  }
-
-  # Gross grid cell transitions per year by stage and sub-type, as magclass object with the names
-  # "stage.from.fromType.to.toType" in the order of the stages; transitions without flow in any grid cell
-  # and year are left out.
-  .transitionOutput <- function(transitions, mainOf, cells) {
-    years <- names(transitions)
-    label <- .typeLabels(mainOf)
-
-    # flows of each year (grid cells x "stage.from.fromType.to.toType"), without columns of zeros
-    byYear <- list()
-    for (t in years) {
-      byYear[[t]] <- matrix(0, length(cells), 0)
-      for (stage in names(transitions[[t]])) {
-        flows <- transitions[[t]][[stage]]
-        flows <- flows[, colSums(flows) > 0, drop = FALSE]
-        if (ncol(flows) == 0) {
-          next
-        }
-        colnames(flows) <- paste(stage, label[sub("[.].*$", "", colnames(flows))],
-                                 label[sub("^.*[.]", "", colnames(flows))], sep = ".")
-        byYear[[t]] <- cbind(byYear[[t]], flows)
-      }
+    out <- state[, , subTypes] * 0
+    for (k in subTypes) {
+      out[, , k] <- collapseDim(weight[, , mainOf[[k]]], dim = 3)
     }
-
-    # items in the order of the stages, so that readers can replay them
-    itemNames <- unique(unlist(lapply(byYear, colnames)))
-    stageNames <- unique(unlist(lapply(transitions, names)))
-    itemNames <- itemNames[order(match(sub("[.].*$", "", itemNames), stageNames))]
-
-    out <- array(0, dim = c(length(cells), length(years), length(itemNames)),
-                 dimnames = list(cells, years, itemNames))
-    for (t in years) {
-      out[, t, colnames(byYear[[t]])] <- byYear[[t]]
-    }
-
-    return(.asCellMagpie(out, "stage.from.fromType.to.toType"))
-  }
-
-  # Labels "land.type" of the sub-types (type "total" for land types without sub-types).
-  .typeLabels <- function(mainOf) {
-    subType <- ifelse(names(mainOf) == mainOf, "total", names(mainOf))
-    return(stats::setNames(paste(mainOf, subType, sep = "."), names(mainOf)))
-  }
-
-  # magclass object of an array grid cells x years x items, with the sets of the 0.5 degree outputs.
-  .asCellMagpie <- function(x, itemSet) {
-    out <- as.magpie(x, spatial = 1, temporal = 2)
-    getSets(out, fulldim = FALSE) <- c("x.y.iso", "year", itemSet)
     return(out)
   }
 
-  # magclass object of one year of a matrix (grid cells x items).
-  .asYear <- function(values, year) {
-    x <- array(values, c(nrow(values), 1, ncol(values)), list(rownames(values), year, colnames(values)))
-    return(.asCellMagpie(x, "data"))
+  # Labels "land.type" of the sub-types (type "total" for land types without sub-types).
+  .typeLabels <- function() {
+    subType <- ifelse(names(mainOf) == mainOf, "total", names(mainOf))
+    return(stats::setNames(paste(mainOf, subType, sep = "."), names(mainOf)))
   }
 
   # Shares of the items in each unit and year; units without area take the shares of all units, copied
@@ -178,7 +117,6 @@ calcLandTransitionsHighRes <- function(input, target = "landuseinit", harmonizat
   constraints <- calcOutput("LandConstraints", input = input, aggregate = FALSE)
   mainOf <- transitions[["mainOf"]]
   mapping <- transitions[["mapping"]]
-  cells <- rownames(transitions[["startHr"]])
 
   # main types in the constraints stand for their sub-types
   constraints <- lapply(constraints, function(constraint) {
@@ -218,16 +156,11 @@ calcLandTransitionsHighRes <- function(input, target = "landuseinit", harmonizat
       }
     } else if (rule[["kind"]] == "depletingTarget") {
       type <- rule[["type"]]
-      weight <- .perArea(pmax(rule[["targetHr"]] - layer[["used"]][[stage]], 0), state[, type])
-      stageInput[["fromWeight"]] <- matrix(weight, ncol = 1, dimnames = list(NULL, type))
+      stageInput[["fromWeight"]] <- .perArea(pmax(rule[["targetHr"]] - layer[["used"]][[stage]], 0), state[, , type])
     } else if (rule[["kind"]] == "peatland") {
-      stageInput[["fromWeight"]] <- .peatlandWeight(state, layer[["peatland"]][["current"]], rule[["onTypes"]],
-                                                    mainOf)
+      stageInput[["fromWeight"]] <- .peatlandWeight(state, layer[["peatland"]][["current"]], rule[["onTypes"]])
     } else if (rule[["kind"]] == "targetArea") {
-      stageInput[["targetArea"]] <- list()
-      for (type in names(rule[["targetHr"]])) {
-        stageInput[["targetArea"]][[type]] <- rule[["targetHr"]][[type]][, year]
-      }
+      stageInput[["targetArea"]] <- rule[["targetHr"]][, year, ]
       stageInput[["allowedTransitions"]] <- rule[["allowedTransitions"]]
     } else {
       stop("Unsupported rule kind \"", rule[["kind"]], "\"")
@@ -238,26 +171,35 @@ calcLandTransitionsHighRes <- function(input, target = "landuseinit", harmonizat
   # Updates the layer at the end of each year: the area taken by the depleting target stages, and the peat
   # on the land and the land reduction of the stage of the peatland rule.
   updateLayer <- function(year, state, flows, layer) {
+    stageOf <- character(0)
+    fromMain <- character(0)
+    if (!is.null(flows)) {
+      stageOf <- getItems(flows, dim = 3.1, full = TRUE)
+      fromMain <- mainOf[getItems(flows, dim = 3.2, full = TRUE)]
+    }
     for (stage in names(layer[["used"]])) {
-      if (!is.null(flows[[stage]])) {
-        layer[["used"]][[stage]] <- layer[["used"]][[stage]] + rowSums(flows[[stage]])
+      if (stage %in% stageOf) {
+        layer[["used"]][[stage]] <- layer[["used"]][[stage]] +
+          setYears(dimSums(flows[, , stageOf == stage], dim = 3), NULL)
       }
     }
 
     if (!is.null(layer[["peatland"]])) {
       onTypes <- peatlandRule[["onTypes"]]
-      reduction <- flows[[peatlandRule[["stage"]]]]
-      fromMain <- mainOf[sub("[.].*$", "", colnames(reduction))]
-      loss <- matrix(0, length(cells), length(onTypes), dimnames = list(cells, onTypes))
+      landHr <- .mainLand(state, onTypes)
+      # land reduction on drained peat by land type
+      loss <- landHr * 0
       for (k in onTypes) {
-        loss[, k] <- rowSums(reduction[, fromMain == k, drop = FALSE])
+        reduction <- stageOf == peatlandRule[["stage"]] & fromMain == k
+        if (any(reduction)) {
+          loss[, , k] <- dimSums(flows[, , reduction], dim = 3)
+        }
       }
 
       peat <- layer[["peatland"]]
-      result <- toolDownscalePeatland(.asYear(.mainLand(state, onTypes, mainOf), year),
-                                      peatlandRule[["lowRes"]][, year, ], .asYear(peat[["current"]], year),
-                                      mapping, .asYear(loss, year))
-      peat[["current"]][] <- as.array(result[["peatlandHr"]])[, 1, ]
+      result <- toolDownscalePeatland(landHr, peatlandRule[["lowRes"]][, year, ], setYears(peat[["current"]], year),
+                                      mapping, loss)
+      peat[["current"]] <- setYears(result[["peatlandHr"]], NULL)
       peat[["out"]][[year]] <- result[["peatlandHr"]]
       peat[["excess"]][[year]] <- result[["excess"]]
       layer[["peatland"]] <- peat
@@ -275,7 +217,20 @@ calcLandTransitionsHighRes <- function(input, target = "landuseinit", harmonizat
   # Outputs
   # =================================================================================================
 
-  landHr <- .landOutput(result[["stateHr"]], mainOf, cells)
+  # grid cell land by land type and sub-type ("land.type"), the start labelled y1985
+  label <- .typeLabels()
+  landHr <- mbind(setYears(result[["startHr"]], "y1985"), result[["stateHr"]])
+  getNames(landHr) <- unname(label[getNames(landHr)])
+  getSets(landHr, fulldim = FALSE) <- c("x.y.iso", "year", "land.type")
+
+  # gross grid cell transitions by stage, land type and sub-type
+  transitionsHr <- result[["transitionsHr"]]
+  # the largest output: without the second reference, the renaming does not keep two copies of it
+  result[["transitionsHr"]] <- NULL
+  getNames(transitionsHr) <- paste(getItems(transitionsHr, dim = 3.1, full = TRUE),
+                                   label[getItems(transitionsHr, dim = 3.2, full = TRUE)],
+                                   label[getItems(transitionsHr, dim = 3.3, full = TRUE)], sep = ".")
+  getSets(transitionsHr, fulldim = FALSE) <- c("x.y.iso", "year", "stage.from.fromType.to.toType")
 
   # items without transitions split with the unit shares; the first split divides a land type, later
   # ones an item of an earlier split
@@ -303,8 +258,7 @@ calcLandTransitionsHighRes <- function(input, target = "landuseinit", harmonizat
     peatlandExcess <- do.call(rbind, unname(peat[["excess"]]))
   }
 
-  out <- list(landHr = landHr, splitHr = splitHr,
-              transitionsHr = .transitionOutput(result[["transitionsHr"]], mainOf, cells),
+  out <- list(landHr = landHr, splitHr = splitHr, transitionsHr = transitionsHr,
               diagnostics = result[["diagnostics"]], excess = result[["excess"]],
               transitionChange = result[["transitionChange"]], deviationLr = result[["deviationLr"]],
               peatlandHr = peatlandHr, peatlandExcess = peatlandExcess)

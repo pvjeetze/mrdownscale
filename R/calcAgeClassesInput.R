@@ -36,6 +36,10 @@ calcAgeClassesInput <- function(input) {
     flowsLr <- readSource("MagpieFulldataGdx", subtype = "ageClassTransitions")
     mapping <- readSource("MagpieFulldataGdx", subtype = "clustermap")
 
+    # years per age class, from the names of the age classes (ac0, ac5, ...)
+    ages <- as.numeric(sub("^ac", "", grep("^ac[0-9]+$", getItems(stocksLr, dim = "ac"), value = TRUE)))
+    classWidth <- ages[2] - ages[1]
+
     # unit flow of a process and land type by age class
     .flow <- function(process, pool) {
       return(collapseDim(flowsLr[, , paste(process, pool, sep = ".")], dim = c(3.1, 3.2, 3.3)))
@@ -72,7 +76,7 @@ calcAgeClassesInput <- function(input) {
     out <- list(stocksLr = stocksLr, pools = pools,
                 groups = list(secdforest = "secdforest.total", forestry = forestry,
                               other = c("other.othernat", "other.youngsecdf")),
-                classWidth = 5, operations = operations, mapping = mapping)
+                classWidth = classWidth, operations = operations, mapping = mapping)
   } else {
     stop("Unsupported input dataset \"", input, "\"")
   }

@@ -94,6 +94,7 @@ test_that("the SNV relocation follows the relocation target of the grid cells, m
   sources[["snv"]][["shareIso"]][["A"]] <- 0.2
   sources[["snvTarget"]] <- new.magpie(rev(case[["mapping"]][["cell"]]), NULL,
                                        c("SNV20TargetCropland", "SNV50TargetCropland"), fill = c(0.5, 0, 0, 0.5, 0, 0))
+  sources[["available"]] <- c(sources[["available"]], "snvTarget")
   localMagpieSources(sources)
   out <- calcLandTransitionsHighRes("magpie")[["x"]]
   relocation <- as.vector(out[["transitionsHr"]][, "y2005", "snvRelocation.crop.total.other.othernat"])

@@ -25,7 +25,7 @@ the first year; missing categories are set to 0.}
 
 \item{mapping}{Data frame of the grid cells and their coarse units, as the clustermap of a MAgPIE run,
 with the columns \code{cell} (names of the grid cells) and \code{cluster} (names of the coarse units). The
-grid cells are matched by name (row names of a matrix, cell names of a magclass object).}
+grid cells are matched by name.}
 
 \item{rewettingHr}{Optional magclass object with the land reduction on drained peat of each grid cell
 and year by land type (crop, past, forestry). From \code{transitionsHr} of

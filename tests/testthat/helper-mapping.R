@@ -2,9 +2,3 @@
 cellMapping <- function(cluster) {
   return(data.frame(cell = paste0("c", seq_along(cluster)), cluster = cluster))
 }
-
-# The row names "c1", "c2", ... of cellMapping on a matrix.
-withCells <- function(x) {
-  rownames(x) <- paste0("c", seq_len(nrow(x)))
-  return(x)
-}

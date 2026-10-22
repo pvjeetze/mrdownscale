@@ -32,52 +32,49 @@
 #' deviation of the unit sums of the grid cell states from \code{statesLr} is reported.
 #'
 #' Weights that depend on the state, on the previous year or on input data come from
-#' \code{stageRules}, a function with arguments \code{year}, \code{stage}, \code{stateHr} (grid cells x
-#' types), \code{previousTransitionsHr} (the grid cell transitions of the previous year, a list by stage as
-#' in \code{transitionsHr} of the return value; \code{NULL} in the first year) and \code{layer}
-#' (see below). It returns \code{NULL} or a list with any of \code{fromWeight} and
-#' \code{toWeight}, matrices (grid cells x types) with type names as column names; types without a
-#' column get weight 1.
+#' \code{stageRules}, a function with arguments \code{year}, \code{stage}, \code{stateHr} (magclass object,
+#' grid cells x the year x types), \code{previousTransitionsHr} (the grid cell transitions of the previous
+#' year, a magclass object as \code{transitionsHr} of the return value for that year; \code{NULL} in the first
+#' year) and \code{layer} (see below). It returns \code{NULL} or a list with any of \code{fromWeight} and
+#' \code{toWeight}, magclass objects (grid cells x types, in the order of the grid cells of \code{startHr});
+#' types without an item get weight 1.
 #'
-#' The list can also contain \code{targetArea}, a named list with one element: the grid cell
+#' The list can also contain \code{targetArea}, a magclass object (grid cells x one type): the grid cell
 #' distribution of a type at the end of the stage (for example urban land from gridded data), scaled in
 #' each unit to the unit area of the type at the end of the stage. The
 #' grid cell transitions of this type then follow the target: its gain and loss per grid cell are scaled
 #' to the unit inflow and outflow, the gain comes from the types present in the grid cell in proportion
 #' to their area, and the
 #' other unit transitions are fitted so that the unit states remain those of the model.
-#' The transitions that can be added in this fit are given by \code{allowedTransitions}, a logical
-#' matrix (types x types, from in rows); by default these are the transitions with a positive total
+#' The transitions that can be added in this fit are given by \code{allowedTransitions}, a character
+#' vector of transitions "from.to"; by default these are the transitions with a positive total
 #' in the stage. The changes against the unit transitions are reported in
 #' \code{transitionChange}.
 #'
 #' A quantity that follows the land year by year and in turn sets weights of the next year (for
 #' example drained peat under managed land) is a \code{layer}: an object with its start value, which
 #' \code{updateLayer(year, stateHr, transitionsHr, layer)} updates at the end of each year from
-#' the grid cell state and the grid cell transitions of the year (a list by stage). \code{stageRules}
-#' receives the layer of the previous year.
+#' the grid cell state and the grid cell transitions of the year (magclass objects as for \code{stageRules}).
+#' \code{stageRules} receives the layer of the previous year.
 #'
-#' @param startHr Numeric matrix of the grid cell state before the first year (grid cells x types), with
-#' grid cell names as row names and type names as column names.
+#' @param startHr magclass object of the grid cell state before the first year (grid cells x one year x
+#' types); type names must not contain ".".
 #' @inheritParams toolAllocateByCrossEntropy
-#' @param statesLr Numeric array of the unit states at the end of each year (units x types x years),
-#' with unit names, the types of \code{startHr} and the years of \code{transitionsLr} as names (for
-#' example the cluster states of a model; for models with states only, the transitions come from
-#' \code{\link{toolMinimalTransitions}}).
-#' @param transitionsLr Named list by year (for example "y2000"). Each element is a named list
-#' of stages in the order of the model; each stage is a numeric matrix of unit transitions
-#' (units x transitions) with the units of \code{statesLr} as row names and column names "from.to".
-#' Transitions from a type to itself are ignored.
+#' @param statesLr magclass object of the unit states at the end of each year (units x the years of
+#' \code{transitionsLr} x the types of \code{startHr}), for example the cluster states of a model; for models
+#' with states only, the transitions come from \code{\link{toolMinimalTransitions}}.
+#' @param transitionsLr magclass object of unit transitions (the units of \code{statesLr} x years x
+#' "stage.from.to"), the stages of each year in the order of the model (the order of the items), as from
+#' \code{magpie4::landTransitions}. Transitions from a type to itself are ignored.
 #' @param stageRules Optional function returning weights and a target area per year and stage, see
 #' details.
 #' @param constraints Optional named list of constraints. Each is a list with
 #' \itemize{
 #'   \item \code{types}: the types whose summed grid cell area is bounded;
-#'   \item \code{upper} or \code{lower}: the bound, a vector with one value per grid cell or a matrix
-#'   (grid cells x years) with years as column names, or a magclass object (grid cells x years, one
-#'   data column; matched by grid cell). A year uses the latest column at or before it,
-#'   earlier years the first column. A lower bound (for example protected land) acts as an upper
-#'   bound on all other types: the grid cell area of \code{startHr} minus the bound;
+#'   \item \code{upper} or \code{lower}: the bound, a magclass object (grid cells x years, one item; matched by
+#'   grid cell). A year uses the latest year of the bound at or before it, earlier years the first. A lower
+#'   bound (for example protected land) acts as an upper bound on all other types: the grid cell area of
+#'   \code{startHr} minus the bound;
 #'   \item \code{priority}: a number, default 1; constraints with a lower priority are exceeded first.
 #' }
 #' @param layer Optional start value of a layer, see details.
@@ -86,9 +83,10 @@
 #' @param tol Tolerance passed to \code{\link{toolAllocateByCrossEntropy}}.
 #' @param maxIter Maximum number of iterations passed to \code{\link{toolAllocateByCrossEntropy}}.
 #' @return List with
-#' \item{stateHr}{array of grid cell states (grid cells x types x years), the first year being "start"}
-#' \item{transitionsHr}{list by year and stage of the grid cell transitions (matrices grid cells x
-#' transitions, only transitions with a positive unit total)}
+#' \item{startHr}{magclass object of the grid cell state before the first year, fitted to the unit states}
+#' \item{stateHr}{magclass object of the grid cell states at the end of each year (grid cells x years x types)}
+#' \item{transitionsHr}{magclass object of the grid cell transitions (grid cells x years x "stage.from.to",
+#' in the order of the stages; transitions without flow in any grid cell and year are left out)}
 #' \item{diagnostics}{data frame by year and stage with the number of iterations, the maximum
 #' residual and the number of units where constraints are exceeded}
 #' \item{excess}{data frame by year, stage, constraint and unit (column cluster) with the area that the grid cell
@@ -100,12 +98,11 @@
 #' @author Patrick v. Jeetze
 #' @seealso \code{\link{toolAllocateByCrossEntropy}}
 #' @examples
-#' startHr <- matrix(c(1, 0, 0.5, 0.5), 2, 2, byrow = TRUE, dimnames = list(c("c1", "c2"), c("crop", "other")))
-#' statesLr <- array(c(1.1, 0.9), c(1, 2, 1), list("A", c("crop", "other"), "y2000"))
-#' crop2other <- matrix(0.4, 1, 1, dimnames = list("A", "crop.other"))
+#' startHr <- new.magpie(c("c1", "c2"), "y1995", c("crop", "other"), fill = c(1, 0.5, 0, 0.5))
+#' statesLr <- new.magpie("A", "y2000", c("crop", "other"), fill = c(1.1, 0.9))
+#' transitionsLr <- new.magpie("A", "y2000", "opt.crop.other", fill = 0.4)
 #' mapping <- data.frame(cell = c("c1", "c2"), cluster = "A")
-#' res <- toolAllocateTransitions(startHr, mapping, statesLr, list(y2000 = list(opt = crop2other)))
-#' res[["stateHr"]][, , "y2000"]
+#' toolAllocateTransitions(startHr, mapping, statesLr, transitionsLr)[["stateHr"]]
 #' @export
 toolAllocateTransitions <- function(startHr, mapping, statesLr, transitionsLr, stageRules = NULL, # nolint: cyclocomp_linter
                                     constraints = NULL, layer = NULL, updateLayer = NULL, tol = 1e-8,
@@ -126,10 +123,6 @@ toolAllocateTransitions <- function(startHr, mapping, statesLr, transitionsLr, s
 
       # prior: area of the source type, times the source and destination weights (1 for types
       # without weight)
-      stopifnot("weights with row names need the grid cells of startHr in its order" =
-                  all(vapply(input[c("fromWeight", "toWeight")], function(w) {
-                    return(is.null(rownames(w)) | identical(rownames(w), rownames(state)))
-                  }, logical(1))))
       fromWeight <- matrix(1, nrow = nrow(state), ncol = ncol(state), dimnames = dimnames(state))
       toWeight <- fromWeight
       fromWeight[, colnames(input[["fromWeight"]])] <- input[["fromWeight"]]
@@ -154,25 +147,39 @@ toolAllocateTransitions <- function(startHr, mapping, statesLr, transitionsLr, s
       # hard cap: the outflow of a type cannot exceed its area; soft caps with a lower priority get a
       # higher minFactor and are exceeded first
       priorities <- sort(unique(unlist(lapply(softCaps, function(x) x[["priority"]]))))
-      caps <- list(list(group = from, cap = state))
+      caps <- list(list(group = from, cap = .asMagpie(state)))
       for (name in names(softCaps)) {
         x <- softCaps[[name]]
         caps[[name]] <- list(group = ifelse(x[["member"]], name, NA), sign = x[["sign"]],
-                             cap = matrix(x[["cap"]], ncol = 1, dimnames = list(NULL, name)),
+                             cap = .asMagpie(matrix(x[["cap"]], ncol = 1, dimnames = list(rownames(state), name))),
                              minFactor = 1e-6^match(x[["priority"]], priorities))
       }
 
       # units that do not converge within maxIter are corrected by .fitSourceArea and show in the
       # residual of the diagnostics
-      solved <- suppressWarnings(toolAllocateByCrossEntropy(total, prior, mapping, caps, fallback, tol, maxIter))
-      flows <- .fitSourceArea(solved[["flowsHr"]], state, from, hrToLr)
+      solved <- suppressWarnings(toolAllocateByCrossEntropy(.asMagpie(total), .asMagpie(prior), mapping, caps,
+                                                            .asMagpie(fallback), tol, maxIter))
+      flows <- matrix(solved[["flowsHr"]], nrow = nrow(state), dimnames = dimnames(prior))
+      flows <- .fitSourceArea(flows, state, from, hrToLr)
 
-      result <- list(state = .applyFlows(state, flows), flows = flows, residual = solved[["residual"]],
+      result <- list(state = .applyFlows(state, flows), flows = flows, residual = as.vector(solved[["residual"]]),
                      iterations = solved[["iterations"]], excess = .constraintExcess(softCaps, flows, hrToLr, tol))
     } else {
       result <- list(state = state, flows = matrix(0, nrow(state), 0), residual = 0, iterations = 0)
     }
     return(result)
+  }
+
+  # The allocation runs on matrices (grid cells or units x types or transitions), converted from and to
+  # magclass at the interfaces: in magclass, the kernel iteration takes about 35 times as long (see
+  # toolAllocateByCrossEntropy).
+  .asMagpie <- function(x, year = NULL) {
+    out <- new.magpie(rownames(x), year, colnames(x))
+    out[] <- x
+    return(out)
+  }
+  .asMatrix <- function(x) {
+    return(matrix(x, nrow = dim(x)[1], dimnames = list(getCells(x), getNames(x))))
   }
 
   # Where the outflow of a type exceeds its area in a grid cell (toolAllocateByCrossEntropy stopped before it
@@ -302,10 +309,10 @@ toolAllocateTransitions <- function(startHr, mapping, statesLr, transitionsLr, s
     gainTotal <- pmax(netChange + as.vector(rowsum(loss, lrIndex)), 0)
     # unit totals (vector by unit) over the grid cells in proportion to the prior, within the caps
     .byFilling <- function(prior, cap, totalLr) {
-      out <- toolAllocateByFilling(matrix(totalLr, dimnames = list(unitsLr, "x")),
-                                   matrix(prior, dimnames = list(rownames(state), "x")),
-                                   matrix(cap, dimnames = list(rownames(state), "x")), mapping)
-      return(out[, 1])
+      out <- toolAllocateByFilling(.asMagpie(matrix(totalLr, dimnames = list(unitsLr, "x"))),
+                                   .asMagpie(matrix(prior, dimnames = list(rownames(state), "x"))),
+                                   .asMagpie(matrix(cap, dimnames = list(rownames(state), "x"))), mapping)
+      return(as.vector(out))
     }
     gain <- .byFilling(pmax(change, 0), rowSums(sourceArea), gainTotal)
 
@@ -463,8 +470,8 @@ toolAllocateTransitions <- function(startHr, mapping, statesLr, transitionsLr, s
   # Unit state after the first nAllocated stages of a year (units x types): the state at the end of the
   # year minus the net change of the later stages; nAllocated = 0 gives the state before the year.
   .unitState <- function(year, nAllocated) {
-    stages <- transitionsLr[[year]]
-    state <- matrix(statesLr[, , year], nrow = dim(statesLr)[1], dimnames = dimnames(statesLr)[1:2])
+    stages <- stagesLr[[year]]
+    state <- matrix(statesUnits[, , year], nrow = dim(statesUnits)[1], dimnames = dimnames(statesUnits)[1:2])
     for (total in stages[seq_along(stages) > nAllocated]) {
       total <- total[rownames(state), , drop = FALSE]
       from <- sub("[.].*$", "", colnames(total))
@@ -512,100 +519,83 @@ toolAllocateTransitions <- function(startHr, mapping, statesLr, transitionsLr, s
 
   # Stops with a message if the inputs of toolAllocateTransitions() do not fit together (the conditions
   # are checked in order, so each can rely on the ones before).
-  .checkTransitionInput <- function(initial, hrToLr, states, transitions, constraints) {
-    types <- colnames(initial)
+  .checkTransitionInput <- function(startHr, hrToLr, statesLr, transitionsLr, constraints) {
+    types <- getNames(startHr)
     stopifnot(
-      "startHr must be a matrix with type names as column names" = is.matrix(initial) & !is.null(types),
+      "startHr must be a magclass object with one year" = is.magpie(startHr) & nyears(startHr) == 1,
       "type names must not contain '.'" = !any(grepl(".", types, fixed = TRUE)),
-      "transitionsLr must be a list named by year" = is.list(transitions) & !is.null(names(transitions)),
-      "statesLr must be an array (units x types x years) with the types of startHr and the years of transitionsLr" =
-        is.array(states) & length(dim(states)) == 3 & setequal(dimnames(states)[[2]], types) &
-        identical(dimnames(states)[[3]], names(transitions)) & !is.null(dimnames(states)[[1]]),
-      "startHr must not contain NA or negative values" = !anyNA(initial) & all(initial >= 0, na.rm = TRUE),
-      "statesLr must not contain NA values" = !anyNA(states),
-      "startHr needs the grid cell names of mapping as row names" = length(hrToLr) == nrow(initial) & !anyNA(hrToLr),
-      "mapping contains units that are not in statesLr" = all(hrToLr %in% dimnames(states)[[1]]),
-      "constraints must be a named list" = length(constraints) == 0 | !is.null(names(constraints))
-    )
-
-    # stages by year ("year.stage") with valid transitions
-    valid <- unlist(lapply(transitions, function(stages) {
-      vapply(stages, function(total) {
-        from <- sub("[.].*$", "", colnames(total))
-        to <- sub("^.*[.]", "", colnames(total))
-        return(identical(rownames(total), dimnames(states)[[1]]) & !anyNA(total) & all(total >= 0, na.rm = TRUE) &
-                 all(grepl("^[^.]+[.][^.]+$", colnames(total))) & all(c(from, to) %in% types))
-      }, logical(1))
-    }))
-    if (!all(valid)) {
-      stop("transitions of ", names(valid)[!valid][1], " (year.stage) must have the units of statesLr as row ",
-           "names, no NA or negative values, and columns named 'from.to' with types of startHr")
-    }
-
-    stopifnot(
+      "startHr must not contain NA or negative values" = !anyNA(startHr) & all(startHr >= 0, na.rm = TRUE),
+      "startHr needs the grid cell names of mapping" = !anyNA(hrToLr),
+      "statesLr must be a magclass object with the types of startHr" =
+        is.magpie(statesLr) & setequal(getNames(statesLr), types),
+      "statesLr must not contain NA values" = !anyNA(statesLr),
+      "mapping contains units that are not in statesLr" = all(hrToLr %in% getCells(statesLr)),
+      "transitionsLr must be a magclass object with the units and years of statesLr" =
+        is.magpie(transitionsLr) & setequal(getCells(transitionsLr), getCells(statesLr)) &
+        identical(getYears(transitionsLr), getYears(statesLr)),
+      "transitionsLr needs items 'stage.from.to' with types of startHr" =
+        all(grepl("^[^.]+[.][^.]+[.][^.]+$", getNames(transitionsLr))) &
+        all(getItems(transitionsLr, dim = 3.2, full = TRUE) %in% types) &
+        all(getItems(transitionsLr, dim = 3.3, full = TRUE) %in% types),
+      "transitionsLr must not contain NA or negative values" =
+        !anyNA(transitionsLr) & all(transitionsLr >= 0, na.rm = TRUE),
+      "constraints must be a named list" = length(constraints) == 0 | !is.null(names(constraints)),
       "a constraint contains types not in startHr" =
         all(vapply(constraints, function(x) all(x[["types"]] %in% types), logical(1))),
       "each constraint needs exactly one of upper and lower" =
         all(vapply(constraints, function(x) is.null(x[["upper"]]) != is.null(x[["lower"]]), logical(1))),
-      "constraint bounds need one value per grid cell, or a matrix of grid cells x years with year names" =
+      "constraint bounds must be magclass objects with the grid cells of startHr and one item" =
         all(vapply(constraints, function(x) {
           bound <- if (is.null(x[["upper"]])) x[["lower"]] else x[["upper"]]
-          return(NROW(bound) == nrow(initial) & !(is.matrix(bound) & is.null(colnames(bound))))
-        }, logical(1))),
-      "constraint bounds with grid cell names need the grid cells of startHr in its order" =
-        all(vapply(constraints, function(x) {
-          bound <- if (is.null(x[["upper"]])) x[["lower"]] else x[["upper"]]
-          cellNames <- if (is.matrix(bound)) rownames(bound) else names(bound)
-          return(is.null(cellNames) | identical(cellNames, rownames(initial)))
+          return(is.magpie(bound) && ndata(bound) == 1 && all(getCells(startHr) %in% getCells(bound)))
         }, logical(1)))
     )
   }
 
 
-  # coarse unit of each grid cell (row of startHr)
-  hrToLr <- as.character(mapping[["cluster"]][match(rownames(startHr), mapping[["cell"]])])
-
-  # magclass bounds as matrices grid cells x years, matched by grid cell
-  constraints <- lapply(constraints, function(x) {
-    for (side in intersect(c("upper", "lower"), names(x))) {
-      if (is.magpie(x[[side]])) {
-        stopifnot("a magclass bound lacks grid cells of startHr" = all(rownames(startHr) %in% getCells(x[[side]])))
-        x[[side]] <- matrix(as.array(x[[side]])[rownames(startHr), , 1], nrow(startHr),
-                            dimnames = list(rownames(startHr), getYears(x[[side]])))
-      }
-    }
-    return(x)
-  })
-
+  hrToLr <- as.character(mapping[["cluster"]][match(getCells(startHr), mapping[["cell"]])])
   .checkTransitionInput(startHr, hrToLr, statesLr, transitionsLr, constraints)
-  types <- colnames(startHr)
-  years <- names(transitionsLr)
-  unitsLr <- dimnames(statesLr)[[1]]
-  cellArea <- rowSums(startHr)
+  types <- getNames(startHr)
+  cells <- getCells(startHr)
+  years <- getYears(transitionsLr)
+  unitsLr <- getCells(statesLr)
 
-  state <- .fitInitial(startHr, hrToLr, .unitState(years[1], 0), tol)
-  stateOut <- array(NA_real_, dim = c(nrow(startHr), length(types), length(years) + 1),
-                    dimnames = list(rownames(startHr), types, c("start", years)))
-  stateOut[, , "start"] <- state
-  transitionsOut <- list()
+  # unit states (units x types x years), unit transitions by year and stage (units x "from.to") and the
+  # bounds of the constraints (grid cells x years)
+  statesUnits <- aperm(as.array(statesLr)[unitsLr, years, types, drop = FALSE], c(1, 3, 2))
+  stageOf <- getItems(transitionsLr, dim = 3.1, full = TRUE)
+  stagesLr <- list()
+  for (year in years) {
+    stagesLr[[year]] <- list()
+    for (stage in unique(stageOf)) {
+      items <- getNames(transitionsLr)[stageOf == stage]
+      stagesLr[[year]][[stage]] <- matrix(transitionsLr[unitsLr, year, items], nrow = length(unitsLr),
+                                          dimnames = list(unitsLr, sub("^[^.]*[.]", "", items)))
+    }
+  }
+  bounds <- lapply(constraints, function(x) {
+    bound <- if (is.null(x[["upper"]])) x[["lower"]] else x[["upper"]]
+    return(matrix(bound[cells, , ], length(cells), dimnames = list(cells, getYears(bound))))
+  })
+  cellArea <- rowSums(.asMatrix(startHr))
+
+  state <- .fitInitial(.asMatrix(startHr), hrToLr, .unitState(years[1], 0), tol)
+  startOut <- .asMagpie(state, getYears(startHr))
+  stateOut <- list()
+  flowsOut <- list()
   diagnostics <- list()
   excess <- list()
   transitionChange <- list()
   previous <- NULL
 
   for (year in years) {
-    transitionsOut[[year]] <- list()
-
     # caps of the year from the constraints: the bound of the latest year at or before the year (the
-    # first year before it); a lower bound becomes an upper bound on all other types
+    # first year before it, and the only one for bounds without year); a lower bound becomes an upper bound
+    # on all other types
     caps <- list()
     for (name in names(constraints)) {
       x <- constraints[[name]]
-      bound <- if (is.null(x[["upper"]])) x[["lower"]] else x[["upper"]]
-      if (is.matrix(bound)) {
-        boundYears <- colnames(bound)
-        bound <- bound[, boundYears[max(c(1, which(boundYears <= year)))]]
-      }
+      bound <- bounds[[name]][, max(c(1, which(colnames(bounds[[name]]) <= year)))]
       if (is.null(x[["upper"]])) {
         caps[[name]] <- list(types = setdiff(types, x[["types"]]), cap = cellArea - bound)
       } else {
@@ -614,28 +604,45 @@ toolAllocateTransitions <- function(startHr, mapping, statesLr, transitionsLr, s
       caps[[name]][["priority"]] <- if (is.null(x[["priority"]])) 1 else x[["priority"]]
     }
 
-    for (stage in names(transitionsLr[[year]])) {
-      input <- if (is.null(stageRules)) list() else as.list(stageRules(year, stage, state, previous, layer))
+    flowsYear <- list()
+    for (stage in names(stagesLr[[year]])) {
+      input <- list()
+      if (!is.null(stageRules)) {
+        input <- as.list(stageRules(year, stage, .asMagpie(state, year), previous, layer))
+      }
+      for (weight in intersect(c("fromWeight", "toWeight"), names(input))) {
+        stopifnot("weights need the grid cells of startHr in its order" = identical(getCells(input[[weight]]), cells))
+        input[[weight]] <- .asMatrix(input[[weight]])
+      }
       input[["caps"]] <- caps
-      total <- transitionsLr[[year]][[stage]]
+      total <- stagesLr[[year]][[stage]]
       # a type with a target grid cell area gets its transitions from the target first; the other
       # transitions are balanced to the same unit states and allocated afterwards
       if (is.null(input[["targetArea"]])) {
         result <- .allocateStage(state, mapping, hrToLr, total, input, tol, maxIter)
       } else {
-        if (length(input[["targetArea"]]) != 1) {
+        if (ndata(input[["targetArea"]]) != 1) {
           stop("targetArea must name one type")
         }
-        unitState <- .unitState(year, match(stage, names(transitionsLr[[year]])))
-        target <- .targetFlows(state, mapping, hrToLr, total, input[["targetArea"]], unitState,
-                               input[["allowedTransitions"]], tol)
+        targetArea <- stats::setNames(list(as.vector(input[["targetArea"]][cells, , ])),
+                                      getNames(input[["targetArea"]]))
+        allowed <- NULL
+        if (!is.null(input[["allowedTransitions"]])) {
+          pairs <- input[["allowedTransitions"]]
+          allowed <- matrix(FALSE, length(types), length(types), dimnames = list(types, types))
+          allowed[cbind(sub("[.].*$", "", pairs), sub("^.*[.]", "", pairs))] <- TRUE
+        }
+        unitState <- .unitState(year, match(stage, names(stagesLr[[year]])))
+        target <- .targetFlows(state, mapping, hrToLr, total, targetArea, unitState, allowed, tol)
         result <- .allocateStage(.applyFlows(state, target[["flows"]]), mapping, hrToLr, target[["rest"]],
                                  input, tol, maxIter)
         result[["flows"]] <- cbind(target[["flows"]], result[["flows"]])
         result[["transitionChange"]] <- target[["change"]]
       }
       state <- result[["state"]]
-      transitionsOut[[year]][[stage]] <- result[["flows"]]
+      flows <- result[["flows"]]
+      colnames(flows) <- paste(rep(stage, ncol(flows)), colnames(flows), sep = ".")
+      flowsYear[[stage]] <- flows
       diagnostics[[length(diagnostics) + 1]] <- data.frame(
         year = year, stage = stage, iterations = result[["iterations"]],
         maxResidual = max(c(0, result[["residual"]])), nExceeded = length(unique(result[["excess"]][["cluster"]]))
@@ -648,22 +655,43 @@ toolAllocateTransitions <- function(startHr, mapping, statesLr, transitionsLr, s
                                                                   result[["transitionChange"]])
       }
     }
-    stateOut[, , year] <- state
-    previous <- transitionsOut[[year]]
+    stateOut[[year]] <- .asMagpie(state, year)
+    # the grid cell transitions of the year, without those that are zero in all grid cells
+    flowsYear <- do.call(cbind, unname(flowsYear))
+    flowsOut[[year]] <- flowsYear[, colSums(flowsYear) > 0, drop = FALSE]
+    previous <- NULL
+    if (ncol(flowsOut[[year]]) > 0) {
+      previous <- .asMagpie(flowsOut[[year]], year)
+    }
     if (!is.null(updateLayer)) {
-      layer <- updateLayer(year, state, previous, layer)
+      layer <- updateLayer(year, .asMagpie(state, year), previous, layer)
     }
   }
+
+  # grid cell states and transitions of all years, joined once at the end: each assignment into a magclass
+  # object copies the whole object, so filling one object year by year takes several times its size in memory
+  stateOut <- mbind(stateOut)
+
+  # the transitions, the largest output, in the order of the stages, assembled in an array: assembled in magclass
+  # (year by year or with mbind), they take five to seven times their size in memory
+  items <- unique(unlist(lapply(flowsOut, colnames)))
+  items <- items[order(match(sub("[.].*$", "", items), unique(stageOf)))]
+  values <- array(0, c(length(cells), length(years), length(items)), list(cells, years, items))
+  for (year in years) {
+    values[, year, colnames(flowsOut[[year]])] <- flowsOut[[year]]
+    flowsOut[[year]] <- NULL
+  }
+  transitionsOut <- as.magpie(values, spatial = 1, temporal = 2)
+  rm(values)
 
   # largest deviation of the unit sums of the grid cell states from the unit states
   deviation <- 0
   for (year in years) {
-    stateYear <- matrix(stateOut[, , year], nrow(startHr), dimnames = list(NULL, types))
-    sumLr <- rowsum(stateYear, hrToLr)[unitsLr, , drop = FALSE]
-    deviation <- max(deviation, abs(sumLr - matrix(statesLr[, types, year], length(unitsLr))))
+    sumLr <- rowsum(.asMatrix(stateOut[, year, ]), hrToLr)[unitsLr, , drop = FALSE]
+    deviation <- max(deviation, abs(sumLr - statesUnits[, colnames(sumLr), year]))
   }
 
-  return(list(stateHr = stateOut, transitionsHr = transitionsOut,
+  return(list(startHr = startOut, stateHr = stateOut, transitionsHr = transitionsOut,
               diagnostics = do.call(rbind, diagnostics), excess = do.call(rbind, excess),
               transitionChange = do.call(rbind, transitionChange), layer = layer, deviationLr = deviation))
 }

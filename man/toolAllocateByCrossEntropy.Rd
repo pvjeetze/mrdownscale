@@ -15,26 +15,25 @@ toolAllocateByCrossEntropy(
 )
 }
 \arguments{
-\item{totalLr}{Numeric matrix of unit totals (units x flows) with row names (units) and
-column names.}
+\item{totalLr}{magclass object of unit totals (units x one year x flows).}
 
-\item{priorHr}{Numeric matrix of non-negative prior weights (grid cells x flows) with grid cell names as row
-names and the column names of \code{totalLr}.}
+\item{priorHr}{magclass object of non-negative prior weights (grid cells x the year of \code{totalLr} x
+the flows of \code{totalLr}).}
 
 \item{mapping}{Data frame of the grid cells and their coarse units, as the clustermap of a MAgPIE run,
 with the columns \code{cell} (names of the grid cells) and \code{cluster} (names of the coarse units). The
-grid cells are matched by name (row names of a matrix, cell names of a magclass object).}
+grid cells are matched by name.}
 
 \item{caps}{List of cap blocks. Each block is a list with \code{group}, a character vector with
 one entry per flow naming its group (\code{NA} for flows without cap in this block), \code{cap},
-a numeric matrix (grid cells x groups) with the group names as column names, and optionally
+a magclass object (the grid cells of \code{priorHr} x the year x groups), and optionally
 \code{sign}, a vector with one entry per flow (1 or -1, default 1), and \code{minFactor}, the
 lowest value of the factor of the block (default 0, a hard cap). The sum of a group is the sum
 of its flows times their sign, so a cap can limit a net change (inflows minus outflows); such a
 cap can be negative. Groups of one block are disjoint; overlapping constraints (for example
 source and destination caps of transitions) go into separate blocks.}
 
-\item{fallbackHr}{Numeric matrix of non-negative weights with the dimensions of \code{priorHr}, used
+\item{fallbackHr}{magclass object of non-negative weights with the dimensions of \code{priorHr}, used
 where the prior of a unit and total sums to zero although the total is positive. \code{NULL}
 gives an error in that case.}
 
@@ -44,10 +43,10 @@ gives an error in that case.}
 }
 \value{
 List with
-\item{flowsHr}{matrix of grid cell flows (grid cells x flows)}
-\item{capFactor}{list with one matrix (grid cells x groups) per cap block: the accumulated factor of
-each cap group, between \code{minFactor} and 1; below 1 where the cap binds}
-\item{residual}{per unit, the maximum deviation from the unit totals before the last
+\item{flowsHr}{magclass object of grid cell flows with the dimensions of \code{priorHr}}
+\item{capFactor}{list with one magclass object per cap block (dimensions of its \code{cap}): the
+accumulated factor of each cap group, between \code{minFactor} and 1; below 1 where the cap binds}
+\item{residual}{magclass object with, per unit, the maximum deviation from the unit totals before the last
 scaling to them; below \code{tol} where the solution converged}
 \item{iterations}{number of iterations}
 }
@@ -95,10 +94,9 @@ Only the relative prior within a unit and total matters: multiplying the prior o
 of a unit for one total by a constant does not change the result.
 }
 \examples{
-total <- matrix(c(2, 1), nrow = 1, dimnames = list("A", c("crop.past", "crop.forestry")))
-prior <- matrix(1, nrow = 3, ncol = 2, dimnames = list(c("c1", "c2", "c3"), colnames(total)))
-source <- list(group = c("crop", "crop"),
-               cap = matrix(c(0.5, 2, 2), ncol = 1, dimnames = list(NULL, "crop")))
+total <- new.magpie("A", NULL, c("crop.past", "crop.forestry"), fill = c(2, 1))
+prior <- new.magpie(c("c1", "c2", "c3"), NULL, getNames(total), fill = 1)
+source <- list(group = c("crop", "crop"), cap = new.magpie(c("c1", "c2", "c3"), NULL, "crop", fill = c(0.5, 2, 2)))
 mapping <- data.frame(cell = c("c1", "c2", "c3"), cluster = "A")
 toolAllocateByCrossEntropy(total, prior, mapping, caps = list(source))[["flowsHr"]]
 }

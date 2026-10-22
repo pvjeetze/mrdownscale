@@ -19,32 +19,20 @@ toolDownscaleTransitions <- function(x, xTarget, mapping) {
             nyears(x) >= 2,
             setequal(getItems(x, 3), getItems(xTarget, 3)))
   types <- getItems(x, 3)
-  units <- getItems(x, 1)
   years <- getYears(x)[-1]
 
-  # unit states at the end of each time step (units x types x years)
-  statesLr <- array(0, c(length(units), length(types), length(years)), dimnames = list(units, types, years))
-  for (t in years) {
-    statesLr[, , t] <- matrix(x[, t, types], nrow = length(units))
-  }
-
   # net transitions of each time step: the annual transitions times the length of the time step,
-  # labelled with the end year
+  # labelled with the end year, as one stage
   annual <- toolMinimalTransitions(x[, , types])
   stepLength <- diff(getYears(x, as.integer = TRUE))
-  transitionsLr <- list()
+  transitionsLr <- annual
   for (i in seq_along(years)) {
-    total <- matrix(annual[, i, ], nrow = length(units), dimnames = list(units, getItems(annual, 3))) * stepLength[i]
-    transitionsLr[[years[i]]] <- list(change = total[, colSums(total) > 0, drop = FALSE])
+    transitionsLr[, i, ] <- annual[, i, ] * stepLength[i]
   }
+  transitionsLr <- add_dimension(setYears(transitionsLr, years), dim = 3.1, add = "stage", nm = "change")
 
-  startHr <- matrix(xTarget[, , types], nrow = ncells(xTarget), dimnames = list(getItems(xTarget, 1), types))
-  result <- toolAllocateTransitions(startHr, mapping, statesLr, transitionsLr)
-
-  out <- new.magpie(rownames(startHr), years, types, fill = 0)
-  for (t in years) {
-    out[, t, ] <- result[["stateHr"]][, , t]
-  }
+  result <- toolAllocateTransitions(xTarget[, , types], mapping, x[, years, types], transitionsLr)
+  out <- result[["stateHr"]]
   getSets(out) <- c("x", "y", "year", "data")
   return(out)
 }

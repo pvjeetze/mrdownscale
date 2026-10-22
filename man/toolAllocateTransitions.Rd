@@ -18,22 +18,20 @@ toolAllocateTransitions(
 )
 }
 \arguments{
-\item{startHr}{Numeric matrix of the grid cell state before the first year (grid cells x types), with
-grid cell names as row names and type names as column names.}
+\item{startHr}{magclass object of the grid cell state before the first year (grid cells x one year x
+types); type names must not contain ".".}
 
 \item{mapping}{Data frame of the grid cells and their coarse units, as the clustermap of a MAgPIE run,
 with the columns \code{cell} (names of the grid cells) and \code{cluster} (names of the coarse units). The
-grid cells are matched by name (row names of a matrix, cell names of a magclass object).}
+grid cells are matched by name.}
 
-\item{statesLr}{Numeric array of the unit states at the end of each year (units x types x years),
-with unit names, the types of \code{startHr} and the years of \code{transitionsLr} as names (for
-example the cluster states of a model; for models with states only, the transitions come from
-\code{\link{toolMinimalTransitions}}).}
+\item{statesLr}{magclass object of the unit states at the end of each year (units x the years of
+\code{transitionsLr} x the types of \code{startHr}), for example the cluster states of a model; for models
+with states only, the transitions come from \code{\link{toolMinimalTransitions}}.}
 
-\item{transitionsLr}{Named list by year (for example "y2000"). Each element is a named list
-of stages in the order of the model; each stage is a numeric matrix of unit transitions
-(units x transitions) with the units of \code{statesLr} as row names and column names "from.to".
-Transitions from a type to itself are ignored.}
+\item{transitionsLr}{magclass object of unit transitions (the units of \code{statesLr} x years x
+"stage.from.to"), the stages of each year in the order of the model (the order of the items), as from
+\code{magpie4::landTransitions}. Transitions from a type to itself are ignored.}
 
 \item{stageRules}{Optional function returning weights and a target area per year and stage, see
 details.}
@@ -41,11 +39,10 @@ details.}
 \item{constraints}{Optional named list of constraints. Each is a list with
 \itemize{
   \item \code{types}: the types whose summed grid cell area is bounded;
-  \item \code{upper} or \code{lower}: the bound, a vector with one value per grid cell or a matrix
-  (grid cells x years) with years as column names, or a magclass object (grid cells x years, one
-  data column; matched by grid cell). A year uses the latest column at or before it,
-  earlier years the first column. A lower bound (for example protected land) acts as an upper
-  bound on all other types: the grid cell area of \code{startHr} minus the bound;
+  \item \code{upper} or \code{lower}: the bound, a magclass object (grid cells x years, one item; matched by
+  grid cell). A year uses the latest year of the bound at or before it, earlier years the first. A lower
+  bound (for example protected land) acts as an upper bound on all other types: the grid cell area of
+  \code{startHr} minus the bound;
   \item \code{priority}: a number, default 1; constraints with a lower priority are exceeded first.
 }}
 
@@ -60,9 +57,10 @@ details.}
 }
 \value{
 List with
-\item{stateHr}{array of grid cell states (grid cells x types x years), the first year being "start"}
-\item{transitionsHr}{list by year and stage of the grid cell transitions (matrices grid cells x
-transitions, only transitions with a positive unit total)}
+\item{startHr}{magclass object of the grid cell state before the first year, fitted to the unit states}
+\item{stateHr}{magclass object of the grid cell states at the end of each year (grid cells x years x types)}
+\item{transitionsHr}{magclass object of the grid cell transitions (grid cells x years x "stage.from.to",
+in the order of the stages; transitions without flow in any grid cell and year are left out)}
 \item{diagnostics}{data frame by year and stage with the number of iterations, the maximum
 residual and the number of units where constraints are exceeded}
 \item{excess}{data frame by year, stage, constraint and unit (column cluster) with the area that the grid cell
@@ -105,38 +103,37 @@ its transitions) by iterative proportional fitting, keeping the area of each gri
 deviation of the unit sums of the grid cell states from \code{statesLr} is reported.
 
 Weights that depend on the state, on the previous year or on input data come from
-\code{stageRules}, a function with arguments \code{year}, \code{stage}, \code{stateHr} (grid cells x
-types), \code{previousTransitionsHr} (the grid cell transitions of the previous year, a list by stage as
-in \code{transitionsHr} of the return value; \code{NULL} in the first year) and \code{layer}
-(see below). It returns \code{NULL} or a list with any of \code{fromWeight} and
-\code{toWeight}, matrices (grid cells x types) with type names as column names; types without a
-column get weight 1.
+\code{stageRules}, a function with arguments \code{year}, \code{stage}, \code{stateHr} (magclass object,
+grid cells x the year x types), \code{previousTransitionsHr} (the grid cell transitions of the previous
+year, a magclass object as \code{transitionsHr} of the return value for that year; \code{NULL} in the first
+year) and \code{layer} (see below). It returns \code{NULL} or a list with any of \code{fromWeight} and
+\code{toWeight}, magclass objects (grid cells x types, in the order of the grid cells of \code{startHr});
+types without an item get weight 1.
 
-The list can also contain \code{targetArea}, a named list with one element: the grid cell
+The list can also contain \code{targetArea}, a magclass object (grid cells x one type): the grid cell
 distribution of a type at the end of the stage (for example urban land from gridded data), scaled in
 each unit to the unit area of the type at the end of the stage. The
 grid cell transitions of this type then follow the target: its gain and loss per grid cell are scaled
 to the unit inflow and outflow, the gain comes from the types present in the grid cell in proportion
 to their area, and the
 other unit transitions are fitted so that the unit states remain those of the model.
-The transitions that can be added in this fit are given by \code{allowedTransitions}, a logical
-matrix (types x types, from in rows); by default these are the transitions with a positive total
+The transitions that can be added in this fit are given by \code{allowedTransitions}, a character
+vector of transitions "from.to"; by default these are the transitions with a positive total
 in the stage. The changes against the unit transitions are reported in
 \code{transitionChange}.
 
 A quantity that follows the land year by year and in turn sets weights of the next year (for
 example drained peat under managed land) is a \code{layer}: an object with its start value, which
 \code{updateLayer(year, stateHr, transitionsHr, layer)} updates at the end of each year from
-the grid cell state and the grid cell transitions of the year (a list by stage). \code{stageRules}
-receives the layer of the previous year.
+the grid cell state and the grid cell transitions of the year (magclass objects as for \code{stageRules}).
+\code{stageRules} receives the layer of the previous year.
 }
 \examples{
-startHr <- matrix(c(1, 0, 0.5, 0.5), 2, 2, byrow = TRUE, dimnames = list(c("c1", "c2"), c("crop", "other")))
-statesLr <- array(c(1.1, 0.9), c(1, 2, 1), list("A", c("crop", "other"), "y2000"))
-crop2other <- matrix(0.4, 1, 1, dimnames = list("A", "crop.other"))
+startHr <- new.magpie(c("c1", "c2"), "y1995", c("crop", "other"), fill = c(1, 0.5, 0, 0.5))
+statesLr <- new.magpie("A", "y2000", c("crop", "other"), fill = c(1.1, 0.9))
+transitionsLr <- new.magpie("A", "y2000", "opt.crop.other", fill = 0.4)
 mapping <- data.frame(cell = c("c1", "c2"), cluster = "A")
-res <- toolAllocateTransitions(startHr, mapping, statesLr, list(y2000 = list(opt = crop2other)))
-res[["stateHr"]][, , "y2000"]
+toolAllocateTransitions(startHr, mapping, statesLr, transitionsLr)[["stateHr"]]
 }
 \seealso{
 \code{\link{toolAllocateByCrossEntropy}}

@@ -3,7 +3,8 @@
 #' Age classes on the grid (\code{\link{calcAgeClassesHighRes}}) in the format of an output.
 #'
 #' @param outputFormat "downscaledmagpie": for each group the share of its area in each age class (NA
-#' where the grid cell has no area of the group), and the diagnostics
+#' where the grid cell has less than 1e-9 Mha of the group, where the composition is undefined), and the
+#' diagnostics
 #' @inheritParams calcAgeClassesHighRes
 #' @return List with a magclass object of shares per group and \code{diagnostics}
 #' @author Patrick v. Jeetze
@@ -16,8 +17,10 @@ calcAgeClassesReport <- function(outputFormat, input, harmonization = "none") {
 
   out <- list()
   for (group in setdiff(names(ages), "diagnostics")) {
-    out[[group]] <- ages[[group]] / dimSums(ages[[group]], dim = 3)
-    out[[group]][is.nan(out[[group]])] <- NA
+    area <- dimSums(ages[[group]], dim = 3)
+    out[[group]] <- ages[[group]] / area
+    # below 1e-9 Mha of the group (its area repeated for each age class), the composition is rounding noise
+    out[[group]][ages[[group]] * 0 + area < 1e-9] <- NA
   }
   out[["diagnostics"]] <- ages[["diagnostics"]]
   return(list(x = out, class = "list", unit = "1", cache = FALSE,

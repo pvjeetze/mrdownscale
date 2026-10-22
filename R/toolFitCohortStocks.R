@@ -17,19 +17,18 @@
 #' area that the fit moves between cohorts, \code{sum(abs(result - stockHr)) / 2}, measures how far
 #' the grid cell flows and the stocks of the units disagree.
 #'
-#' @param stockHr Numeric matrix of the stock of each grid cell (grid cells x cohorts) with grid cell names as row
-#' names and cohort names as column names.
-#' @param stockLr Numeric matrix of the stock of each unit (units x cohorts) with unit names
-#' as row names and the column names of \code{stockHr}.
+#' @param stockHr magclass object of the stock of each grid cell (grid cells x cohorts), without year.
+#' @param stockLr magclass object of the stock of each unit (units x the cohorts of \code{stockHr}), without
+#' year.
 #' @inheritParams toolAllocateByCrossEntropy
 #' @param tol Tolerance for the stocks of the units (absolute, in the measure of \code{stockLr}).
 #' @param maxIter Maximum number of iterations.
-#' @return Numeric matrix of the fitted grid cell stocks (grid cells x cohorts).
+#' @return magclass object of the fitted grid cell stocks with the dimensions of \code{stockHr}.
 #' @author Patrick v. Jeetze
 #' @seealso \code{\link{toolAllocateCohortFlows}}, \code{\link{calcAgeClassesHighRes}}
 #' @examples
-#' stockHr <- matrix(c(1, 0, 0, 1), 2, 2, dimnames = list(c("c1", "c2"), c("ac0", "ac5")))
-#' stockLr <- matrix(c(0.5, 1.5), 1, dimnames = list("A", c("ac0", "ac5")))
+#' stockHr <- new.magpie(c("c1", "c2"), NULL, c("ac0", "ac5"), fill = c(1, 0, 0, 1))
+#' stockLr <- new.magpie("A", NULL, c("ac0", "ac5"), fill = c(0.5, 1.5))
 #' toolFitCohortStocks(stockHr, stockLr, data.frame(cell = c("c1", "c2"), cluster = "A"))
 #' @export
 toolFitCohortStocks <- function(stockHr, stockLr, mapping, tol = 1e-8, maxIter = 200) {
@@ -40,7 +39,7 @@ toolFitCohortStocks <- function(stockHr, stockLr, mapping, tol = 1e-8, maxIter =
     for (iter in seq_len(maxIter)) {
       rows <- which(active[lrIndex])
       rowSum <- rowSums(x[rows, , drop = FALSE])
-      x[rows, ] <- (x[rows, , drop = FALSE] / ifelse(rowSum > 0, rowSum, 1)) * total[rows]
+      x[rows, ] <- (x[rows, , drop = FALSE] / replace(rowSum, rowSum <= 0, 1)) * total[rows]
       sumLr <- rowsum(x[rows, , drop = FALSE], lrIndex[rows])
       activeIndex <- which(active)
       deviation <- apply(abs(sumLr - target[activeIndex, , drop = FALSE]), 1, max)
@@ -50,34 +49,42 @@ toolFitCohortStocks <- function(stockHr, stockLr, mapping, tol = 1e-8, maxIter =
       }
       unit <- match(lrIndex[rows], activeIndex)
       sumHr <- sumLr[unit, , drop = FALSE]
-      x[rows, ] <- (x[rows, , drop = FALSE] / ifelse(sumHr > 0, sumHr, 1)) *
+      x[rows, ] <- (x[rows, , drop = FALSE] / replace(sumHr, sumHr <= 0, 1)) *
         target[activeIndex[unit], , drop = FALSE]
     }
     return(list(x = x, active = active))
   }
 
-  hrToLr <- as.character(mapping[["cluster"]][match(rownames(stockHr), mapping[["cell"]])])
-  stopifnot("stockHr needs the grid cell names of mapping as row names" =
-              length(hrToLr) == nrow(stockHr) & !anyNA(hrToLr))
-  total <- rowSums(stockHr)
+  # The fit runs on matrices (grid cells x cohorts), as the iteration of toolAllocateByCrossEntropy, which
+  # takes about 35 times as long in magclass.
+  .asMatrix <- function(x) {
+    return(matrix(x, nrow = dim(x)[1], dimnames = list(getCells(x), getNames(x))))
+  }
+
+  hrToLr <- as.character(mapping[["cluster"]][match(getCells(stockHr), mapping[["cell"]])])
+  stopifnot("stockHr and stockLr must be magclass objects" = is.magpie(stockHr) & is.magpie(stockLr),
+            "stockHr needs the grid cell names of mapping" = !anyNA(hrToLr),
+            "stockHr and stockLr must have the same cohorts" = identical(getNames(stockHr), getNames(stockLr)))
+  stock <- .asMatrix(stockHr)
+  total <- rowSums(stock)
   totalLr <- tapply(total, hrToLr, sum)
   unitsLr <- names(totalLr)
   lrIndex <- match(hrToLr, unitsLr)
 
   # cohort composition of the units, scaled to the summed grid cell totals
-  target <- stockLr[unitsLr, , drop = FALSE]
+  target <- .asMatrix(stockLr)[unitsLr, , drop = FALSE]
   targetSum <- rowSums(target)
-  share <- target / ifelse(targetSum > 0, targetSum, 1)
+  share <- target / replace(targetSum, targetSum <= 0, 1)
   share[targetSum == 0, ] <- 1 / ncol(target)
   target <- share * as.vector(totalLr)
 
   # seed where the fit cannot reach a cohort otherwise: cohorts of a unit that none of its grid cells
   # holds, and grid cells that hold no cohort of their unit
   hasCohort <- target[lrIndex, , drop = FALSE] > 0
-  missingLr <- target > 0 & rowsum(stockHr, lrIndex) == 0
-  missingHr <- total > 0 & rowSums(stockHr * hasCohort) == 0
+  missingLr <- target > 0 & rowsum(stock, lrIndex) == 0
+  missingHr <- total > 0 & rowSums(stock * hasCohort) == 0
   seed <- 1e-6 * share[lrIndex, , drop = FALSE] * total
-  x <- stockHr + seed * (missingLr[lrIndex, , drop = FALSE] | missingHr)
+  x <- stock + seed * (missingLr[lrIndex, , drop = FALSE] | missingHr)
   fit <- .fitUnits(x, total, target, lrIndex, rep(TRUE, length(unitsLr)), tol, maxIter)
 
   # units that did not converge (grid cells whose cohorts cannot reach the stocks of the unit): again
@@ -89,5 +96,7 @@ toolFitCohortStocks <- function(stockHr, stockLr, mapping, tol = 1e-8, maxIter =
     fit <- .fitUnits(x, total, target, lrIndex, fit[["active"]], tol, maxIter)
   }
   fitSum <- rowSums(fit[["x"]])
-  return((fit[["x"]] / ifelse(fitSum > 0, fitSum, 1)) * total)
+  out <- stockHr
+  out[] <- (fit[["x"]] / replace(fitSum, fitSum <= 0, 1)) * total
+  return(out)
 }

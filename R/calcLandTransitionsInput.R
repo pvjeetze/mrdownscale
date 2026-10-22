@@ -17,7 +17,7 @@
 #'   and optimisation), recoveryForestry on the inflow from forestry;
 #'   \item the SNV relocation in proportion to the relocation target (\code{SNVTargetCropland_0.5.mz},
 #'   interpolated for the SNV share of the run as \code{i29_snv_relocation_target}) not relocated in
-#'   earlier years;
+#'   earlier years, if the run has the target in its output folder;
 #'   \item the land reduction on drained peat in proportion to the drained peat of the grid cells
 #'   (peatland, updated each year by \code{\link{toolDownscalePeatland}});
 #'   \item in the optimisation, urban land follows the 0.5 degree data of the run
@@ -31,9 +31,10 @@
 #' \item{mainOf}{named character vector: the land type of each sub-type (the type itself for land types
 #' without sub-types)}
 #' \item{mapping}{data frame with columns cell and cluster}
-#' \item{startHr}{numeric matrix of the grid cell state before the first year (grid cells x sub-types)}
-#' \item{statesLr}{numeric array of the unit states at the end of each year (units x sub-types x years)}
-#' \item{transitionsLr}{list by year of lists by stage of unit transitions (matrices units x "from.to")}
+#' \item{startHr}{magclass object of the grid cell state before the first year (grid cells x one year x
+#' sub-types)}
+#' \item{statesLr}{magclass object of the unit states at the end of each year (units x years x sub-types)}
+#' \item{transitionsLr}{magclass object of the unit transitions (units x years x "stage.from.to")}
 #' \item{splitLr}{named list of the unit compositions of items without transitions (magclass objects,
 #' units x years x parts), applied in order: cropland into crop area, fallow and tree cover, then crop
 #' area into crops by water supply}
@@ -41,31 +42,30 @@
 #' @author Patrick v. Jeetze
 #' @seealso \code{\link{calcLandConstraints}}, \code{\link{calcLandTransitionsHighRes}}
 calcLandTransitionsInput <- function(input) {
-  # Cluster x item matrix of one year of a magclass object.
-  .yearMatrix <- function(x, year, clusters) {
-    out <- matrix(x[, year, ], nrow = dim(x)[1], dimnames = list(getItems(x, dim = 1), getItems(x, dim = 3)))
-    return(out[clusters, , drop = FALSE])
-  }
-
-  # Initial grid cell state by sub-type (grid cells x types): pasture and rangeland merged, forestry and other
-  # land split into equal parts; toolAllocateTransitions then fits each sub-type to its cluster start total.
+  # Initial grid cell state by sub-type: pasture and rangeland merged, forestry and other land split into
+  # equal parts; toolAllocateTransitions then fits each sub-type to its cluster start total.
   .initialSubtypes <- function(initial, mainOf) {
-    types <- names(mainOf)
-    forestryTypes <- types[mainOf == "forestry"]
-    otherTypes <- types[mainOf == "other"]
-    x <- as.array(initial)[, 1, ]
-    x[x < 0] <- 0
-
-    out <- matrix(0, nrow(x), length(types), dimnames = list(rownames(x), types))
-    out[, c("crop", "primforest", "secdforest", "urban")] <- x[, c("crop", "primforest", "secdforest", "urban")]
-    out[, "past"] <- x[, "past"] + x[, "range"]
+    forestryTypes <- names(mainOf)[mainOf == "forestry"]
+    otherTypes <- names(mainOf)[mainOf == "other"]
+    initial[initial < 0] <- 0
+    out <- new.magpie(getCells(initial), getYears(initial), names(mainOf), fill = 0)
+    for (k in c("crop", "primforest", "secdforest", "urban")) {
+      out[, , k] <- initial[, , k]
+    }
+    out[, , "past"] <- dimSums(initial[, , c("past", "range")], dim = 3)
     for (k in forestryTypes) {
-      out[, k] <- x[, "forestry"] / length(forestryTypes)
+      out[, , k] <- initial[, , "forestry"] / length(forestryTypes)
     }
     for (k in otherTypes) {
-      out[, k] <- (x[, "primother"] + x[, "secdother"]) / length(otherTypes)
+      out[, , k] <- dimSums(initial[, , c("primother", "secdother")], dim = 3) / length(otherTypes)
     }
     return(out)
+  }
+
+  # The same items with the data dimension set "type", for binding objects of different sets.
+  .asTypes <- function(x) {
+    getSets(x, fulldim = FALSE)[3] <- "type"
+    return(x)
   }
 
   if (input == "magpie") {
@@ -87,7 +87,7 @@ calcLandTransitionsInput <- function(input) {
     years <- getYears(transitionsLr)
 
     # =================================================================================================
-    # Land types, cluster states and cluster transitions by stage
+    # Land types and cluster states
     # =================================================================================================
 
     # main land type of each sub-type of the run: forestry types of module 32 and other land types of
@@ -100,29 +100,10 @@ calcLandTransitionsInput <- function(input) {
                 stats::setNames(rep("other", length(otherTypes)), otherTypes))
     types <- names(mainOf)
 
-    # cluster state at the end of each year by sub-type (clusters x types x years)
-    otherLr <- dimSums(dataLr[["other"]], dim = "ac")
-    statesLr <- array(0, dim = c(length(clusters), length(types), length(years)),
-                      dimnames = list(clusters, types, years))
-    for (t in years) {
-      land <- .yearMatrix(dataLr[["land"]], t, clusters)
-      state <- cbind(land[, c("crop", "past", "primforest", "secdforest", "urban"), drop = FALSE],
-                     .yearMatrix(dataLr[["forestry"]], t, clusters),
-                     .yearMatrix(otherLr, t, clusters))
-      statesLr[, , t] <- state[, types]
-    }
-
-    # stages of each year (matrices clusters x "from.to"), in the order of the model
-    stageOf <- getItems(transitionsLr, dim = 3.1, full = TRUE)
-    stages <- list()
-    for (t in years) {
-      stages[[t]] <- list()
-      for (stage in unique(stageOf)) {
-        items <- getNames(transitionsLr)[stageOf == stage]
-        stages[[t]][[stage]] <- matrix(transitionsLr[clusters, t, items], nrow = length(clusters),
-                                       dimnames = list(clusters, sub("^[^.]*[.]", "", items)))
-      }
-    }
+    # cluster state at the end of each year by sub-type
+    statesLr <- mbind(.asTypes(dataLr[["land"]][, years, c("crop", "past", "primforest", "secdforest", "urban")]),
+                      .asTypes(dataLr[["forestry"]][, years, ]),
+                      .asTypes(dimSums(dataLr[["other"]][, years, ], dim = "ac")))[, , types]
 
     # composition of cropland in each cluster: crop area, fallow and tree cover, and crop area by crop
     # and water supply
@@ -144,33 +125,39 @@ calcLandTransitionsInput <- function(input) {
 
     # SNV relocation in proportion to the cropland that requires relocation under the SNV policy
     # (Copernicus land cover), interpolated between the 20 % and 50 % targets for the SNV share of the
-    # grid cell as i29_snv_relocation_target
-    if ("snvRelocation" %in% stageOf && sum(transitionsLr[, , "snvRelocation"]) > 0) {
+    # grid cell as i29_snv_relocation_target; runs without these data at 0.5 degree in their output folder
+    # allocate the relocation like the other transitions, within the crop constraint
+    stageOf <- getItems(transitionsLr, dim = 3.1, full = TRUE)
+    snvRelocation <- "snvRelocation" %in% stageOf && sum(transitionsLr[, , "snvRelocation"]) > 0
+    if (snvRelocation && !"snvTarget" %in% readSource("MagpieRunFiles", subtype = "available")) {
+      warning("The run has no SNV target cropland at 0.5 degree (SNVTargetCropland_0.5.mz): ",
+              "the SNV relocation is allocated without it")
+    } else if (snvRelocation) {
       snv <- readSource("MagpieFulldataGdx", subtype = "snv")
       targetData <- readSource("MagpieRunFiles", subtype = "snvTarget")
       stopifnot("SNVTargetCropland_0.5.mz lacks grid cells of the start map" = all(cells %in% getCells(targetData)))
-      share <- unname(snv[["shareIso"]][getItems(targetData, dim = 1.3, full = TRUE)])
-      target20 <- as.vector(targetData[, , "SNV20TargetCropland"])
-      target50 <- as.vector(targetData[, , "SNV50TargetCropland"])
+      targetData <- setYears(targetData[cells, , ], NULL)
+      share <- new.magpie(cells, NULL, fill = unname(snv[["shareIso"]][getItems(targetData, dim = 1.3, full = TRUE)]))
+      target20 <- collapseDim(targetData[, , "SNV20TargetCropland"], dim = 3)
+      target50 <- collapseDim(targetData[, , "SNV50TargetCropland"], dim = 3)
       x1 <- snv[["relocationX1"]]
       x2 <- snv[["relocationX2"]]
       target <- pmin(share / x1, 1) * target20 + pmax(share - x1, 0) / (x2 - x1) * (target50 - target20)
-      names(target) <- getCells(targetData)
       rules[[length(rules) + 1]] <- list(stage = "snvRelocation", kind = "depletingTarget", type = "crop",
-                                         targetHr = target[cells])
+                                         targetHr = target)
     }
 
     # land reduction on drained peat in proportion to the drained peat of the grid cells (peatland realisation
-    # v2), from the initial grid cell peat by category
+    # v2), from the initial grid cell peat by category; categories without data start at 0
     if (cfg[["gms"]][["peatland"]] == "v2") {
       peatlandLr <- readSource("MagpieFulldataGdx", subtype = "peatland")
       peatlandStartHr <- readSource("MagpieRunFiles", subtype = "peatland")
       stopifnot("peatland data lack grid cells of the start map" = all(cells %in% getCells(peatlandStartHr)))
       categories <- getNames(peatlandLr)
-      peatStart <- as.array(peatlandStartHr)[, 1, , drop = FALSE]
-      common <- intersect(categories, dimnames(peatStart)[[3]])
-      peatStartHr <- matrix(0, length(cells), length(categories), dimnames = list(cells, categories))
-      peatStartHr[, common] <- peatStart[cells, 1, common]
+      peatStartHr <- new.magpie(cells, NULL, categories, fill = 0)
+      for (k in intersect(categories, getNames(peatlandStartHr))) {
+        peatStartHr[, , k] <- setYears(peatlandStartHr[cells, 1, k], NULL)
+      }
       rules[[length(rules) + 1]] <- list(stage = "peatRewetting", kind = "peatland", startHr = peatStartHr,
                                          lowRes = peatlandLr,
                                          onTypes = intersect(categories, c("crop", "past", "forestry")))
@@ -180,20 +167,23 @@ calcLandTransitionsInput <- function(input) {
     # transitions with a positive upper bound in the land module, and no new inflow to secondary forest
     # (only harvest regrowth and restoration), youngsecdf and primary forest
     if (cfg[["gms"]][["urban"]] == "exo_nov21") {
-      urbanHr <- readSource("MagpieRunFiles", subtype = "urban")[, , cfg[["gms"]][["c34_urban_scenario"]]]
+      urbanHr <- readSource("MagpieRunFiles", subtype = "urban")
       stopifnot("urban data lack grid cells of the start map" = all(cells %in% getCells(urbanHr)))
-      mainAllowed <- apply(as.array(dataLr[["transitionsUpper"]]) > 0, 3, any)
-      compensationAllowed <- outer(types, types, "!=") &
-        matrix(mainAllowed[outer(mainOf, mainOf, paste, sep = ".")], length(types))
-      dimnames(compensationAllowed) <- list(types, types)
-      compensationAllowed[, c("secdforest", "youngsecdf", "primforest")] <- FALSE
-      urbanCells <- matrix(as.array(urbanHr)[cells, , 1], length(cells), dimnames = list(cells, getYears(urbanHr)))
-      rules[[length(rules) + 1]] <- list(stage = "optimisation", kind = "targetArea",
-                                         targetHr = list(urban = urbanCells), allowedTransitions = compensationAllowed)
+      urbanHr <- urbanHr[cells, , cfg[["gms"]][["c34_urban_scenario"]]]
+      getNames(urbanHr) <- "urban"
+      upper <- dataLr[["transitionsUpper"]]
+      mainAllowed <- getNames(upper)[as.vector(dimSums((upper > 0) * 1, dim = c(1, 2)) > 0)]
+      pairs <- expand.grid(from = types, to = types, stringsAsFactors = FALSE)
+      allowed <- pairs[["from"]] != pairs[["to"]] &
+        paste(mainOf[pairs[["from"]]], mainOf[pairs[["to"]]], sep = ".") %in% mainAllowed &
+        !pairs[["to"]] %in% c("secdforest", "youngsecdf", "primforest")
+      allowedTransitions <- paste(pairs[["from"]], pairs[["to"]], sep = ".")[allowed]
+      rules[[length(rules) + 1]] <- list(stage = "optimisation", kind = "targetArea", targetHr = urbanHr,
+                                         allowedTransitions = allowedTransitions)
     }
 
     out <- list(mainOf = mainOf, mapping = mapping, startHr = .initialSubtypes(landStartHr, mainOf),
-                statesLr = statesLr, transitionsLr = stages, splitLr = splitLr, rules = rules)
+                statesLr = statesLr, transitionsLr = transitionsLr, splitLr = splitLr, rules = rules)
   } else {
     stop("Unsupported input dataset \"", input, "\"")
   }

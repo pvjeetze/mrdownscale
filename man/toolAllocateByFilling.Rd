@@ -7,20 +7,19 @@
 toolAllocateByFilling(totalLr, priorHr, capHr, mapping)
 }
 \arguments{
-\item{totalLr}{Numeric matrix of unit totals (units x columns) with the unit names as row names.}
+\item{totalLr}{magclass object of unit totals (units x years x items).}
 
-\item{priorHr}{Numeric matrix of prior weights (grid cells x columns) with grid cell names as row
-names and the column names of \code{totalLr}.}
+\item{priorHr}{magclass object of prior weights (grid cells x the years and items of \code{totalLr}).}
 
-\item{capHr}{Numeric matrix of caps with the dimensions and names of \code{priorHr}. Grid cells with a
+\item{capHr}{magclass object of caps with the dimensions and names of \code{priorHr}. Grid cells with a
 prior or a cap of zero or below (for example -1e-17 from rounding) take nothing.}
 
 \item{mapping}{Data frame of the grid cells and their coarse units, as the clustermap of a MAgPIE run,
 with the columns \code{cell} (names of the grid cells) and \code{cluster} (names of the coarse units). The
-grid cells are matched by name (row names of a matrix, cell names of a magclass object).}
+grid cells are matched by name.}
 }
 \value{
-Numeric matrix of the grid cell values (grid cells x columns) with the names of \code{priorHr}.
+magclass object of the grid cell values with the dimensions and names of \code{priorHr}.
 }
 \description{
 Distributes totals of coarse units (Lr, for example the clusters of a model) to their grid cells (Hr) in
@@ -28,21 +27,21 @@ proportion to a prior, without exceeding the cap of any grid cell. Where the gri
 are full, the rest goes to the other grid cells of the unit in proportion to their remaining cap.
 }
 \details{
-For each unit and column, the grid cell values are \code{min(cap, t * prior)} with the
+For each unit, year and item, the grid cell values are \code{min(cap, t * prior)} with the
 factor \code{t} chosen so that they sum to the unit total (closed form, no iteration). Where the
 caps of the grid cells with a prior are too small, these grid cells get their cap and the rest is
 distributed in the same way over the remaining cap of all grid cells of the unit. Where the caps
 of all grid cells are too small, every grid cell gets its cap, and the unit total is not reached.
 As long as the grid cells with a prior can hold the total, this is the solution of
-\code{\link{toolAllocateByCrossEntropy}} with one hard cap per grid cell and column, computed directly. The
+\code{\link{toolAllocateByCrossEntropy}} with one hard cap per grid cell and item, computed directly. The
 spill-over to grid cells without a prior has no counterpart in \code{\link{toolAllocateByCrossEntropy}}, where a
 zero prior stays zero; use \code{\link{toolAllocateByCrossEntropy}} for caps shared by several flows, soft or
 signed caps.
 }
 \examples{
-total <- matrix(1.5, 1, 1, dimnames = list("A", "protected"))
-prior <- matrix(c(0.2, 0.1, 0), 3, 1, dimnames = list(c("c1", "c2", "c3"), "protected"))
-cap <- matrix(c(1, 1, 1), 3, 1, dimnames = dimnames(prior))
+total <- new.magpie("A", NULL, "protected", fill = 1.5)
+prior <- new.magpie(c("c1", "c2", "c3"), NULL, "protected", fill = c(0.2, 0.1, 0))
+cap <- new.magpie(c("c1", "c2", "c3"), NULL, "protected", fill = 1)
 mapping <- data.frame(cell = c("c1", "c2", "c3"), cluster = "A")
 # c1 and c2 are filled first (c1 reaches its cap), the rest goes to c3
 toolAllocateByFilling(total, prior, cap, mapping)

@@ -16,22 +16,24 @@
 #' @author Patrick v. Jeetze
 #' @seealso \code{\link{calcAgeClassesReport}}
 calcAgeClassesHighRes <- function(input, harmonization = "none") { # nolint: cyclocomp_linter
-  # Unit values by age class in a year (units x age classes).
+  # Unit values by age class in a year, without year.
   .unitAges <- function(x, year) {
-    out <- matrix(x[, year, ], nrow = dim(x)[1], dimnames = list(getItems(x, dim = 1), getItems(x, dim = 3)))
-    return(out[units, ageClasses, drop = FALSE])
+    return(setYears(x[units, year, ageClasses], NULL))
   }
 
-  # Adds the area of each grid cell (vector) to the first nShift age classes of stock, in equal parts.
+  # Adds amount (one value per grid cell) to the first nShift age classes of stock, in equal parts.
   .toEntry <- function(stock, amount, nShift) {
-    entry <- seq_len(nShift)
-    stock[, entry] <- stock[, entry] + amount / nShift
+    entry <- ageClasses[seq_len(nShift)]
+    stock[, , entry] <- stock[, , entry] + amount / nShift
     return(stock)
   }
 
-  # Grid cell sum of the selected grid cell transitions (flows: grid cells x transitions).
+  # Grid cell sum of the selected grid cell transitions of a year.
   .cellFlow <- function(flows, select) {
-    return(rowSums(flows[, select, drop = FALSE]))
+    if (!any(select)) {
+      return(zeroHr)
+    }
+    return(dimSums(flows[, , select], dim = 3))
   }
 
   ages <- calcOutput("AgeClassesInput", input = input, aggregate = FALSE)
@@ -46,17 +48,17 @@ calcAgeClassesHighRes <- function(input, harmonization = "none") { # nolint: cyc
 
   units <- getItems(stocksLr, dim = 1)
   cells <- getCells(landHr)
-  unitOf <- as.character(mapping[["cluster"]][match(cells, mapping[["cell"]])])
-  stopifnot("mapping lacks grid cells of the land" = !anyNA(unitOf))
+  stopifnot("mapping lacks grid cells of the land" = all(cells %in% mapping[["cell"]]))
   ageClasses <- getItems(stocksLr, dim = "ac")
   yearNumbers <- getYears(stocksLr, as.integer = TRUE)
+  zeroHr <- new.magpie(cells, NULL, NULL, fill = 0)
 
-  # unit stock of each land type (magclass objects by age class), and its grid cell land (grid cells x years)
+  # unit stock of each land type by age class, and its grid cell land
   stockLr <- list()
-  cellArea <- list()
+  landOfPool <- list()
   for (pool in pools) {
     stockLr[[pool]] <- collapseDim(stocksLr[, , pool], dim = c(3.1, 3.2))
-    cellArea[[pool]] <- matrix(as.array(landHr[, , pool]), ncol = length(years), dimnames = list(NULL, years))
+    landOfPool[[pool]] <- collapseDim(landHr[, , pool], dim = 3)
   }
 
   # labels of the grid cell transitions
@@ -66,22 +68,20 @@ calcAgeClassesHighRes <- function(input, harmonization = "none") { # nolint: cyc
   to <- paste(getItems(transitionsHr, dim = 3.4, full = TRUE), getItems(transitionsHr, dim = 3.5, full = TRUE),
               sep = ".")
 
-  # first year: the age composition of the unit in each grid cell
+  # first year: the age composition of the unit in each grid cell (equal shares where the unit has no stock)
   stock <- list()
   for (pool in pools) {
     unitStock <- .unitAges(stockLr[[pool]], years[1])
-    stockSum <- rowSums(unitStock)
-    share <- unitStock / ifelse(stockSum > 0, stockSum, 1)
-    share[stockSum == 0, ] <- 1 / length(ageClasses)
-    stock[[pool]] <- share[unitOf, , drop = FALSE] * cellArea[[pool]][, 1]
-    rownames(stock[[pool]]) <- cells
+    stockSum <- dimSums(unitStock, dim = 3)
+    share <- unitStock / stockSum
+    share[is.nan(share)] <- 1 / length(ageClasses)
+    shareHr <- toolAggregate(share, mapping, from = "cluster", to = "cell")[cells, , ]
+    stock[[pool]] <- shareHr * setYears(landOfPool[[pool]][, years[1], ], NULL)
   }
 
+  # stocks of each group by year, joined once at the end: each assignment into a magclass object copies the
+  # whole object, so filling one object year by year takes several times its size in memory
   out <- list()
-  for (group in names(ages[["groups"]])) {
-    out[[group]] <- array(0, dim = c(length(cells), length(years), length(ageClasses)),
-                          dimnames = list(cells, years, ageClasses))
-  }
   diagnostics <- list()
 
   for (i in seq_along(years)) {
@@ -91,14 +91,14 @@ calcAgeClassesHighRes <- function(input, harmonization = "none") { # nolint: cyc
     if (i > 1) {
       nShift <- (yearNumbers[i] - yearNumbers[i - 1]) / ages[["classWidth"]]
       stopifnot("time steps must be multiples of the age class width" = nShift == round(nShift))
-      # grid cell transitions of the year, in the grid cell order of the land
-      flows <- matrix(as.array(transitionsHr[, year, ])[cells, 1, , drop = FALSE], nrow = length(cells))
+      # grid cell transitions of the year
+      flows <- setYears(transitionsHr[, year, ], NULL)
 
       for (operation in ages[["operations"]]) {
         if (operation[["kind"]] == "within") {
           pool <- operation[["pool"]]
           moved <- toolAllocateCohortFlows(stock[[pool]], .unitAges(operation[["flowLr"]], year), mapping)
-          entry <- rowSums(moved)
+          entry <- dimSums(moved, dim = 3)
           if (!is.null(operation[["inflowStages"]])) {
             entry <- entry + .cellFlow(flows, stage %in% operation[["inflowStages"]] & to == pool)
           }
@@ -118,14 +118,14 @@ calcAgeClassesHighRes <- function(input, harmonization = "none") { # nolint: cyc
           outflow <- .cellFlow(flows, outside & from == pool & to != pool)
           inflow <- .cellFlow(flows, outside & to == pool & from != pool)
           # area that enters and leaves in the same time step passes through without age
-          through <- pmin(pmax(outflow - rowSums(stock[[pool]]), 0), inflow)
+          through <- pmin(pmax(outflow - dimSums(stock[[pool]], dim = 3), 0), inflow)
           passThrough[[pool]] <- sum(through)
 
           left <- toolAllocateCohortFlows(stock[[pool]], .unitAges(operation[["outflowLr"]], year), mapping,
                                           outflow - through, tol = 1e-6)
           stock[[pool]] <- stock[[pool]] - left
           regrowth <- toolAllocateCohortFlows(stock[[pool]], .unitAges(operation[["regrowthLr"]], year), mapping)
-          stock[[pool]] <- .toEntry(stock[[pool]] - regrowth, rowSums(regrowth) + inflow - through, nShift)
+          stock[[pool]] <- .toEntry(stock[[pool]] - regrowth, dimSums(regrowth, dim = 3) + inflow - through, nShift)
         } else {
           stop("Unsupported operation \"", operation[["kind"]], "\"")
         }
@@ -138,10 +138,11 @@ calcAgeClassesHighRes <- function(input, harmonization = "none") { # nolint: cyc
       tracked <- stock[[pool]]
       stock[[pool]] <- toolFitCohortStocks(tracked, unitStock, mapping, tol = 1e-6)
       type <- sub("^.*[.]", "", pool)
+      fittedLr <- toolAggregate(stock[[pool]], mapping, from = "cell", to = "cluster")[units, , ]
       diagnostics[[length(diagnostics) + 1]] <- data.frame(
         year = year, type = ifelse(type == "total", sub("[.].*$", "", pool), type),
-        gridCellDeviation = max(abs(rowSums(stock[[pool]]) - cellArea[[pool]][, i])),
-        clusterDeviation = sum(abs(rowsum(stock[[pool]], unitOf)[units, , drop = FALSE] - unitStock)),
+        gridCellDeviation = max(abs(dimSums(stock[[pool]], dim = 3) - setYears(landOfPool[[pool]][, year, ], NULL))),
+        clusterDeviation = sum(abs(fittedLr - unitStock)),
         clusterArea = sum(unitStock), passThrough = passThrough[[pool]],
         movedByFit = sum(abs(stock[[pool]] - tracked)) / 2
       )
@@ -151,17 +152,15 @@ calcAgeClassesHighRes <- function(input, harmonization = "none") { # nolint: cyc
       for (pool in ages[["groups"]][[group]]) {
         total <- total + stock[[pool]]
       }
-      out[[group]][, i, ] <- total
+      out[[group]][[year]] <- setYears(total, year)
     }
   }
 
-  result <- list()
   for (group in names(out)) {
-    result[[group]] <- as.magpie(out[[group]], spatial = 1, temporal = 2)
-    getSets(result[[group]], fulldim = FALSE) <- c("x.y.iso", "year", "ac")
-    out[[group]] <- NULL
+    out[[group]] <- mbind(out[[group]])
+    getSets(out[[group]], fulldim = FALSE) <- c("x.y.iso", "year", "ac")
   }
-  result[["diagnostics"]] <- do.call(rbind, diagnostics)
-  return(list(x = result, class = "list", unit = "Mha",
+  out[["diagnostics"]] <- do.call(rbind, diagnostics)
+  return(list(x = out, class = "list", unit = "Mha",
               description = "Age classes of the input by grid cell"))
 }

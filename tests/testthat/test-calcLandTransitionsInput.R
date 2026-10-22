@@ -1,22 +1,19 @@
-test_that("the stages of each year are matrices in the order of the model, the states by sub-type", {
+test_that("the transitions are those of the run by stage, the states and the start by sub-type", {
   case <- magpieCase()
   localMagpieSources(magpieSources(case))
   x <- calcLandTransitionsInput("magpie")[["x"]]
-  expect_equal(names(x[["transitionsLr"]]), c("y2000", "y2005"))
-  expect_equal(names(x[["transitionsLr"]][["y2000"]]),
+  expect_equal(getYears(x[["transitionsLr"]]), c("y2000", "y2005"))
+  expect_equal(unique(getItems(x[["transitionsLr"]], dim = 3.1, full = TRUE)),
                c("disturbance", "recoveryForestry", "recovery", "maturation", "optimisation"))
-  optimisation <- x[["transitionsLr"]][["y2000"]][["optimisation"]]
-  expect_equal(dimnames(optimisation),
-               list("A.1", c("past.crop", "othernat.crop", "crop.plant", "aff.othernat", "youngsecdf.othernat",
-                             "crop.past")))
-  expect_equal(as.vector(optimisation), c(0.3, 0.2, 0.1, 0.05, 0.02, 0))
-  expect_equal(as.vector(x[["transitionsLr"]][["y2005"]][["recoveryForestry"]]), 0.04)
+  expect_equal(as.vector(x[["transitionsLr"]][, "y2000", "optimisation"]), c(0.3, 0.2, 0.1, 0.05, 0.02, 0))
+  expect_equal(as.vector(x[["transitionsLr"]][, "y2005", "recoveryForestry"]), 0.04)
   expect_equal(unname(x[["mainOf"]]), c("crop", "past", "forestry", "forestry", "primforest", "secdforest", "urban",
                                         "other", "other"))
-  expect_equal(as.vector(x[["statesLr"]][, c("othernat", "youngsecdf"), "y2005"]), c(2.53, 0.27))
+  expect_equal(getNames(x[["statesLr"]]), names(x[["mainOf"]]))
+  expect_equal(as.vector(x[["statesLr"]][, "y2005", c("othernat", "youngsecdf")]), c(2.53, 0.27))
   # the start map with forestry and other land in equal parts of their sub-types
-  expect_equal(unname(x[["startHr"]][, "aff"]), c(0.2, 0, 0.3) / 2)
-  expect_equal(unname(x[["startHr"]][, "past"]), c(0.5, 1, 0.5) + c(0, 0.5, 0))
+  expect_equal(as.vector(x[["startHr"]][, , "aff"]), c(0.2, 0, 0.3) / 2)
+  expect_equal(as.vector(x[["startHr"]][, , "past"]), c(0.5, 1, 0.5) + c(0, 0.5, 0))
   expect_equal(names(x[["splitLr"]]), c("crop", "crop_area"))
 })
 
@@ -37,15 +34,25 @@ test_that("rules place recovery, and where the run has them the SNV relocation, 
   sources[["snv"]][["shareIso"]][["A"]] <- 0.35
   sources[["snvTarget"]] <- new.magpie(cells, NULL, c("SNV20TargetCropland", "SNV50TargetCropland"),
                                        fill = c(0.2, 0, 0, 0.4, 0.2, 0))
+  sources[["available"]] <- c(sources[["available"]], "snvTarget")
   localMagpieSources(sources)
   x <- calcLandTransitionsInput("magpie")[["x"]]
   kinds <- stats::setNames(vapply(x[["rules"]], function(r) r[["kind"]], character(1)),
                            vapply(x[["rules"]], function(r) r[["stage"]], character(1)))
   expect_equal(kinds, c(recoveryForestry = "previousInflow", recovery = "previousInflow",
                         snvRelocation = "depletingTarget", peatRewetting = "peatland", optimisation = "targetArea"))
-  expect_equal(unname(x[["rules"]][[3]][["targetHr"]]), c(0.3, 0.1, 0))
+  expect_equal(as.vector(x[["rules"]][[3]][["targetHr"]]), c(0.3, 0.1, 0))
   expect_equal(x[["rules"]][[4]][["onTypes"]], "crop")
+  expect_equal(getNames(x[["rules"]][[5]][["targetHr"]]), "urban")
   # no new inflow to secondary forest, youngsecdf and primary forest in the urban compensation
   allowed <- x[["rules"]][[5]][["allowedTransitions"]]
-  expect_false(any(allowed[, c("secdforest", "youngsecdf", "primforest")]))
+  expect_true(length(allowed) > 0)
+  expect_false(any(sub("^.*[.]", "", allowed) %in% c("secdforest", "youngsecdf", "primforest")))
+})
+
+test_that("without the SNV target of the grid cells, the SNV relocation has no rule", {
+  case <- addStage(magpieCase(), "snvRelocation.crop.othernat", "y2005", 0.1)
+  localMagpieSources(magpieSources(case))
+  rules <- expect_warning(calcLandTransitionsInput("magpie")[["x"]][["rules"]], "SNV relocation is allocated without")
+  expect_false("snvRelocation" %in% vapply(rules, function(r) r[["stage"]], character(1)))
 })

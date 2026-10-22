@@ -47,74 +47,80 @@ toolDownscalePeatland <- function(landHr, peatlandLr, peatlandStartHr, mapping, 
   cells <- getCells(landHr)
   cluster <- as.character(mapping[["cluster"]][match(cells, mapping[["cell"]])])
   stopifnot("mapping lacks grid cells of landHr" = !anyNA(cluster))
-  clusters <- getItems(peatlandLr, 1)
   years <- getYears(peatlandLr)
   categories <- getNames(peatlandLr)
   drained <- intersect(categories, c("crop", "past", "forestry"))
   landType <- getItems(landHr, dim = 3.1, full = TRUE)
 
-  # peat of the grid cells before the first year (grid cells x categories); magclass inputs matched by grid cell
-  current <- matrix(0, length(cells), length(categories), dimnames = list(cells, categories))
-  start <- as.array(peatlandStartHr)[, 1, , drop = FALSE]
-  common <- intersect(categories, dimnames(start)[[3]])
-  current[, common] <- start[cells, 1, common]
-  loss <- array(0, c(length(cells), length(years), length(drained)), dimnames = list(cells, years, drained))
-  if (!is.null(rewettingHr)) {
-    rewetting <- as.array(rewettingHr)
-    common <- intersect(drained, dimnames(rewetting)[[3]])
-    loss[, , common] <- rewetting[cells, years, common]
+  # Denominator of a share: values that are not positive become 1.
+  .denominator <- function(x) {
+    x[x <= 0] <- 1
+    return(x)
   }
 
-  out <- array(0, c(length(cells), length(years), length(categories)), dimnames = list(cells, years, categories))
+  # land of the drained categories (crop, past, forestry), sub-types summed
+  land <- new.magpie(cells, years, drained, fill = 0)
+  for (k in drained) {
+    land[, , k] <- dimSums(landHr[, years, landType == k], dim = 3)
+  }
+  # peat of the grid cells before the first year, and the land reduction on drained peat; magclass inputs
+  # matched by grid cell, missing categories 0
+  current <- new.magpie(cells, NULL, categories, fill = 0)
+  for (k in intersect(categories, getNames(peatlandStartHr))) {
+    current[, , k] <- setYears(peatlandStartHr[cells, 1, k], NULL)
+  }
+  loss <- land * 0
+  if (!is.null(rewettingHr)) {
+    for (k in intersect(drained, getNames(rewettingHr))) {
+      loss[, , k] <- rewettingHr[cells, years, k]
+    }
+  }
+
+  out <- list()
   excess <- list()
   for (year in years) {
-    # land of the drained categories (crop, past, forestry)
-    land <- matrix(0, length(cells), length(drained), dimnames = list(cells, drained))
-    for (k in drained) {
-      land[, k] <- rowSums(as.array(landHr[, year, landType == k])[, 1, , drop = FALSE])
-    }
-
     # grid cells with peat, and all grid cells of clusters without such grid cells
-    hasPeat <- rowSums(current) > 0
+    hasPeat <- as.vector(dimSums(current, dim = 3)) > 0
     active <- hasPeat | !(cluster %in% cluster[hasPeat])
-    peat <- current[active, , drop = FALSE]
-    total <- matrix(peatlandLr[, year, ], nrow = dim(peatlandLr)[1],
-                    dimnames = list(getItems(peatlandLr, dim = 1), getItems(peatlandLr, dim = 3)))
-    total <- total[clusters, categories, drop = FALSE]
+    activeMapping <- data.frame(cell = cells[active], cluster = cluster[active])
+    .onCells <- function(xLr) {
+      return(toolAggregate(xLr, activeMapping, from = "cluster", to = "cell"))
+    }
+    peat <- current[active, , ]
+    total <- setYears(peatlandLr[, year, categories], NULL)
 
     # one step of interpolate2 as prior: in each grid cell, categories shrink by the share by which they
     # shrink in the cluster (drained peat by the land reduction on it, where given), and the freed
     # area goes to the growing categories in proportion to their cluster growth
-    previousTotal <- rowsum(peat, cluster[active])[clusters, , drop = FALSE]
+    previousTotal <- toolAggregate(peat, activeMapping, from = "cell", to = "cluster")[getCells(total), , ]
     change <- total - previousTotal
-    shrinkShare <- pmax(-change, 0) / ifelse(previousTotal > 0, previousTotal, 1)
-    shrinkSum <- rowSums(pmax(-change, 0))
-    growShare <- pmax(change, 0) / ifelse(shrinkSum > 0, shrinkSum, 1)
-    shrink <- peat * shrinkShare[cluster[active], , drop = FALSE]
-    if (sum(loss[active, year, ]) > 0) {
-      shrink[, drained] <- pmin(loss[active, year, ], peat[, drained, drop = FALSE])
+    shrinkShare <- pmax(-change, 0) / .denominator(previousTotal)
+    growShare <- pmax(change, 0) / .denominator(dimSums(pmax(-change, 0), dim = 3))
+    shrink <- peat * .onCells(shrinkShare)
+    lossYear <- setYears(loss[active, year, ], NULL)
+    if (sum(lossYear) > 0) {
+      shrink[, , drained] <- pmin(lossYear, peat[, , drained])
     }
-    prior <- peat - shrink + rowSums(shrink) * growShare[cluster[active], , drop = FALSE]
+    prior <- peat - shrink + dimSums(shrink, dim = 3) * .onCells(growShare)
 
     # caps: the peat area of each grid cell, and drained peat within the land of its type (soft)
-    area <- rowSums(peat)
-    caps <- list(list(group = rep("peat", length(categories)),
-                      cap = matrix(area, ncol = 1, dimnames = list(NULL, "peat"))))
+    area <- dimSums(peat, dim = 3)
+    caps <- list(list(group = rep("peat", length(categories)), cap = setNames(area, "peat")))
     if (length(drained) > 0) {
       caps[[2]] <- list(group = ifelse(categories %in% drained, categories, NA),
-                        cap = land[active, , drop = FALSE], minFactor = 1e-6)
+                        cap = setYears(land[active, year, ], NULL), minFactor = 1e-6)
     }
-    fallback <- matrix(area, length(area), length(categories))
-    result <- suppressWarnings(toolAllocateByCrossEntropy(total, prior, mapping, caps, fallbackHr = fallback,
+    result <- suppressWarnings(toolAllocateByCrossEntropy(total, prior, mapping, caps, fallbackHr = prior * 0 + area,
                                                           tol = 1e-6, maxIter = 100))
 
-    current[active, ] <- result[["flowsHr"]]
-    out[, year, ] <- current
+    current[active, , ] <- result[["flowsHr"]]
+    out[[year]] <- setYears(current, year)
+    above <- pmax(current[, , drained] - setYears(land[, year, ], NULL), 0)
     excess[[year]] <- data.frame(year = rep(year, length(drained)), category = drained,
-                                 area = colSums(pmax(current[, drained, drop = FALSE] - land, 0)))
+                                 area = as.vector(dimSums(above, dim = 1)))
   }
 
-  peatlandHr <- as.magpie(out, spatial = 1, temporal = 2)
+  peatlandHr <- mbind(out)
   getSets(peatlandHr, fulldim = FALSE) <- c("x.y.iso", "year", "data")
   return(list(peatlandHr = peatlandHr, excess = do.call(rbind, excess)))
 }

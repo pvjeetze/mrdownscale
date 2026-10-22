@@ -149,7 +149,7 @@ calcLandTransitionsInput <- function(input) {
 
     # land reduction on drained peat in proportion to the drained peat of the grid cells (peatland realisation
     # v2), from the initial grid cell peat by category; categories without data start at 0
-    if (cfg[["gms"]][["peatland"]] == "v2") {
+    if (cfg$gms$peatland == "v2") {
       peatlandLr <- readSource("MagpieFulldataGdx", subtype = "peatland")
       peatlandStartHr <- readSource("MagpieRunFiles", subtype = "peatland")
       stopifnot("peatland data lack grid cells of the start map" = all(cells %in% getCells(peatlandStartHr)))
@@ -166,10 +166,10 @@ calcLandTransitionsInput <- function(input) {
     # urban land from the data (scaled to the cluster urban land of the model); compensation within the
     # transitions with a positive upper bound in the land module, and no new inflow to secondary forest
     # (only harvest regrowth and restoration), youngsecdf and primary forest
-    if (cfg[["gms"]][["urban"]] == "exo_nov21") {
+    if (cfg$gms$urban == "exo_nov21") {
       urbanHr <- readSource("MagpieRunFiles", subtype = "urban")
       stopifnot("urban data lack grid cells of the start map" = all(cells %in% getCells(urbanHr)))
-      urbanHr <- urbanHr[cells, , cfg[["gms"]][["c34_urban_scenario"]]]
+      urbanHr <- urbanHr[cells, , cfg$gms$c34_urban_scenario]
       getNames(urbanHr) <- "urban"
       upper <- dataLr[["transitionsUpper"]]
       mainAllowed <- getNames(upper)[as.vector(dimSums((upper > 0) * 1, dim = c(1, 2)) > 0)]

@@ -94,7 +94,7 @@ fullDOWNSCALEDMAGPIE <- function(rev = numeric_version("0"), # nolint: cyclocomp
 
       if (!is.null(land[["peatlandHr"]])) {
         # peatland from the year in which the model starts to change it
-        firstYear <- readSource("MagpieRunFiles", subtype = "config")[["gms"]][["s58_fix_peatland"]]
+        firstYear <- readSource("MagpieRunFiles", subtype = "config")$gms$s58_fix_peatland
         peatHr <- land[["peatlandHr"]]
         peatHr <- peatHr[, getYears(peatHr, as.integer = TRUE) >= firstYear, ]
         utils::write.csv(land[["peatlandExcess"]], "cell.peatland_excess.csv", row.names = FALSE)

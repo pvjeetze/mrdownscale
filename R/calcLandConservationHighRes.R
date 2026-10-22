@@ -60,8 +60,8 @@ calcLandConservationHighRes <- function(input, onLand = FALSE, harmonization = "
     }
 
     # base protection by year as p22_wdpa_baseline, the last year of the data after it
-    baseProtect <- cfg[["gms"]][["c22_base_protect"]]
-    baseProtectNoselect <- cfg[["gms"]][["c22_base_protect_noselect"]]
+    baseProtect <- cfg$gms$c22_base_protect
+    baseProtectNoselect <- cfg$gms$c22_base_protect_noselect
     if (baseProtectNoselect != "none") {
       dataHr[, , ] <- collapseDim(wdpaHr[, nyears(wdpaHr), baseProtectNoselect], dim = 3.1)
       dataHr[, getYears(wdpaHr), ] <- collapseDim(wdpaHr[, , baseProtectNoselect], dim = 3.1)
@@ -74,8 +74,8 @@ calcLandConservationHighRes <- function(input, onLand = FALSE, harmonization = "
     }
 
     # future conservation in the conservation priority areas, with the fader
-    protectScenario <- cfg[["gms"]][["c22_protect_scenario"]]
-    protectScenarioNoselect <- cfg[["gms"]][["c22_protect_scenario_noselect"]]
+    protectScenario <- cfg$gms$c22_protect_scenario
+    protectScenarioNoselect <- cfg$gms$c22_protect_scenario_noselect
     if (!all(c(protectScenario, protectScenarioNoselect) %in% "none")) {
       if ("conservationPriority" %in% readSource("MagpieRunFiles", subtype = "available")) {
         consvPrioAll <- readSource("MagpieRunFiles", subtype = "conservationPriority")

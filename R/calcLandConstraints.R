@@ -36,16 +36,16 @@ calcLandConstraints <- function(input) {
     # potential forest area of the run: corrected for grassland ecoregions or not, and its climate
     # change scenario (runs that do not write the file to the output folder have no such constraint)
     potentialForestFile <- "potentialForest"
-    if (identical(cfg[["gms"]][["c35_pot_forest_correction"]], "off")) {
+    if (identical(cfg$gms$c35_pot_forest_correction, "off")) {
       potentialForestFile <- "potentialForestUncorrected"
     }
     if (potentialForestFile %in% available) {
       potentialForest <- readSource("MagpieRunFiles", subtype = potentialForestFile)
       years <- getYears(potentialForest, as.integer = TRUE)
       sourceYears <- years
-      if (identical(cfg[["gms"]][["c35_pot_forest_scenario"]], "nocc")) {
+      if (identical(cfg$gms$c35_pot_forest_scenario, "nocc")) {
         sourceYears[] <- 1995
-      } else if (identical(cfg[["gms"]][["c35_pot_forest_scenario"]], "nocc_hist")) {
+      } else if (identical(cfg$gms$c35_pot_forest_scenario, "nocc_hist")) {
         fixYear <- readSource("MagpieFulldataGdx", subtype = "climateFixYear")
         sourceYears[years > fixYear] <- fixYear
       }
@@ -58,9 +58,9 @@ calcLandConstraints <- function(input) {
 
     # available cropland reduced by the SNV share of the country of each grid cell and its fader (marginal
     # land setting of module 29, or module 30 in runs before the cropland module)
-    marginalLand <- cfg[["gms"]][["c29_marginal_land"]]
+    marginalLand <- cfg$gms$c29_marginal_land
     if (is.null(marginalLand)) {
-      marginalLand <- cfg[["gms"]][["c30_marginal_land"]]
+      marginalLand <- cfg$gms$c30_marginal_land
     }
     croplandHr <- readSource("MagpieRunFiles", subtype = "availableCropland")[, , marginalLand]
     snv <- readSource("MagpieFulldataGdx", subtype = "snv")

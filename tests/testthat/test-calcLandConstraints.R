@@ -22,6 +22,16 @@ test_that("potential forest without climate change keeps the values of 1995", {
   expect_equal(as.vector(upper), rep(1, 9))
 })
 
+test_that("runs before the cropland module and without the potential forest file are supported", {
+  case <- magpieCase()
+  sources <- magpieSources(case, config = list(c29_marginal_land = NULL, c30_marginal_land = "all"))
+  sources[["available"]] <- setdiff(sources[["available"]], "potentialForest")
+  localMagpieSources(sources)
+  constraints <- expect_warning(calcLandConstraints("magpie")[["x"]], "no potential forest constraint")
+  expect_equal(names(constraints), "crop")
+  expect_equal(as.vector(constraints[["crop"]][["upper"]][, "y2000", ]), rep(100, 3))
+})
+
 test_that("protected natural vegetation and pasture are lower bounds where the run has conservation data", {
   case <- magpieCase()
   sources <- magpieSources(case)

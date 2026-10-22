@@ -10,9 +10,10 @@
 #' \itemize{
 #'   \item potentialForest: forest establishment within the potential forest area
 #'   (\code{q35_max_forest_establishment}), potential forest by \code{c35_pot_forest_correction} and
-#'   \code{c35_pot_forest_scenario} as in modules/35_natveg/pot_forest_may24/input.gms;
-#'   \item crop: cropland within the available cropland (\code{c29_marginal_land}) reduced by the SNV
-#'   share and its fader (\code{q29_avl_cropland});
+#'   \code{c35_pot_forest_scenario} as in modules/35_natveg/pot_forest_may24/input.gms, if the run has the
+#'   potential forest area at 0.5 degree in its output folder;
+#'   \item crop: cropland within the available cropland (\code{c29_marginal_land}, \code{c30_marginal_land}
+#'   in runs before the cropland module) reduced by the SNV share and its fader (\code{q29_avl_cropland});
 #'   \item natveg and past: protected natural vegetation (as a whole, because the land types of the
 #'   protected-area data need not match those of the start map) and pasture (\code{vm_land.lo}) from
 #'   \code{\link{calcLandConservationHighRes}}, if the run has land conservation data.
@@ -29,39 +30,48 @@ calcLandConstraints <- function(input) {
   if (input == "magpie") {
     priorities <- c(protection = 1, potentialForest = 2, crop = 3)
     cfg <- readSource("MagpieRunFiles", subtype = "config")
+    available <- readSource("MagpieRunFiles", subtype = "available")
+    constraints <- list()
 
     # potential forest area of the run: corrected for grassland ecoregions or not, and its climate
-    # change scenario
+    # change scenario (runs that do not write the file to the output folder have no such constraint)
+    potentialForestFile <- "potentialForest"
     if (identical(cfg[["gms"]][["c35_pot_forest_correction"]], "off")) {
-      potentialForest <- readSource("MagpieRunFiles", subtype = "potentialForestUncorrected")
+      potentialForestFile <- "potentialForestUncorrected"
+    }
+    if (potentialForestFile %in% available) {
+      potentialForest <- readSource("MagpieRunFiles", subtype = potentialForestFile)
+      years <- getYears(potentialForest, as.integer = TRUE)
+      sourceYears <- years
+      if (identical(cfg[["gms"]][["c35_pot_forest_scenario"]], "nocc")) {
+        sourceYears[] <- 1995
+      } else if (identical(cfg[["gms"]][["c35_pot_forest_scenario"]], "nocc_hist")) {
+        fixYear <- readSource("MagpieFulldataGdx", subtype = "climateFixYear")
+        sourceYears[years > fixYear] <- fixYear
+      }
+      potentialForest <- setYears(potentialForest[, paste0("y", sourceYears), ], getYears(potentialForest))
+      constraints[["potentialForest"]] <- list(types = c("forestry", "primforest", "secdforest", "youngsecdf"),
+                                               upper = potentialForest, priority = priorities[["potentialForest"]])
     } else {
-      potentialForest <- readSource("MagpieRunFiles", subtype = "potentialForest")
+      warning("The run has no potential forest area at 0.5 degree: no potential forest constraint")
     }
-    years <- getYears(potentialForest, as.integer = TRUE)
-    sourceYears <- years
-    if (identical(cfg[["gms"]][["c35_pot_forest_scenario"]], "nocc")) {
-      sourceYears[] <- 1995
-    } else if (identical(cfg[["gms"]][["c35_pot_forest_scenario"]], "nocc_hist")) {
-      fixYear <- readSource("MagpieFulldataGdx", subtype = "climateFixYear")
-      sourceYears[years > fixYear] <- fixYear
-    }
-    potentialForest <- setYears(potentialForest[, paste0("y", sourceYears), ], getYears(potentialForest))
 
-    # available cropland reduced by the SNV share of the country of each grid cell and its fader
-    croplandHr <- readSource("MagpieRunFiles", subtype = "availableCropland")[, , cfg[["gms"]][["c29_marginal_land"]]]
+    # available cropland reduced by the SNV share of the country of each grid cell and its fader (marginal
+    # land setting of module 29, or module 30 in runs before the cropland module)
+    marginalLand <- cfg[["gms"]][["c29_marginal_land"]]
+    if (is.null(marginalLand)) {
+      marginalLand <- cfg[["gms"]][["c30_marginal_land"]]
+    }
+    croplandHr <- readSource("MagpieRunFiles", subtype = "availableCropland")[, , marginalLand]
     snv <- readSource("MagpieFulldataGdx", subtype = "snv")
     snvShareHr <- new.magpie(getCells(croplandHr),
                              fill = unname(snv[["shareIso"]][getItems(croplandHr, dim = 1.3, full = TRUE)]))
     snvFader <- collapseDim(snv[["fader"]], dim = 1)
-
-    constraints <- list(
-      potentialForest = list(types = c("forestry", "primforest", "secdforest", "youngsecdf"),
-                             upper = potentialForest, priority = priorities[["potentialForest"]]),
-      crop = list(types = "crop", upper = croplandHr * (1 - snvShareHr * snvFader), priority = priorities[["crop"]])
-    )
+    constraints[["crop"]] <- list(types = "crop", upper = croplandHr * (1 - snvShareHr * snvFader),
+                                  priority = priorities[["crop"]])
 
     # protected natural vegetation and pasture
-    if ("wdpa" %in% readSource("MagpieRunFiles", subtype = "available")) {
+    if ("wdpa" %in% available) {
       protectionHr <- calcOutput("LandConservationHighRes", input = input, onLand = FALSE, aggregate = FALSE)
       natveg <- c("primforest", "secdforest", "other")
       constraints[["natveg"]] <- list(types = natveg, priority = priorities[["protection"]],

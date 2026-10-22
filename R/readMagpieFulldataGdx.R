@@ -100,14 +100,19 @@ readMagpieFulldataGdx <- function(subtype) {
     return(list(x = x, class = "list"))
   } else if (subtype == "snv") {
     # SNV share of each country (s29_snv_shr in the policy countries, s29_snv_shr_noselect in the
-    # others), its fader, and the shares of the relocation targets
+    # others), its fader, and the shares of the relocation targets; module 29 (cropland), or module 30 in
+    # runs before the cropland module
+    .first <- function(module29, module30) {
+      return(gdx2::readGDX(gdx, module29, module30, format = "first_found"))
+    }
     iso <- gdx2::readGDX(gdx, "iso")
-    shareIso <- stats::setNames(rep(as.numeric(gdx2::readGDX(gdx, "s29_snv_shr_noselect")), length(iso)), iso)
-    shareIso[gdx2::readGDX(gdx, "policy_countries29")] <- as.numeric(gdx2::readGDX(gdx, "s29_snv_shr"))
+    shareIso <- stats::setNames(rep(as.numeric(.first("s29_snv_shr_noselect", "s30_snv_shr_noselect")),
+                                    length(iso)), iso)
+    shareIso[.first("policy_countries29", "policy_countries30")] <- as.numeric(.first("s29_snv_shr", "s30_snv_shr"))
     x <- list(shareIso = shareIso,
-              fader = gdx2::readGDX(gdx, "i29_snv_scenario_fader"),
-              relocationX1 = as.numeric(gdx2::readGDX(gdx, "s29_snv_relocation_data_x1")),
-              relocationX2 = as.numeric(gdx2::readGDX(gdx, "s29_snv_relocation_data_x2")))
+              fader = .first("i29_snv_scenario_fader", "p30_snv_scenario_fader"),
+              relocationX1 = as.numeric(.first("s29_snv_relocation_data_x1", "s30_snv_relocation_data_x1")),
+              relocationX2 = as.numeric(.first("s29_snv_relocation_data_x2", "s30_snv_relocation_data_x2")))
     return(list(x = x, class = "list"))
   } else if (subtype == "bii") {
     x <- magpie4::BII(gdx, level = "cell", landClass = "all")

@@ -96,7 +96,8 @@ of a unit for one total by a constant does not change the result.
 \examples{
 total <- new.magpie("A", NULL, c("crop.past", "crop.forestry"), fill = c(2, 1))
 prior <- new.magpie(c("c1", "c2", "c3"), NULL, getNames(total), fill = 1)
-source <- list(group = c("crop", "crop"), cap = new.magpie(c("c1", "c2", "c3"), NULL, "crop", fill = c(0.5, 2, 2)))
+cap <- new.magpie(c("c1", "c2", "c3"), NULL, "crop", fill = c(0.5, 2, 2))
+source <- list(group = c("crop", "crop"), cap = cap)
 mapping <- data.frame(cell = c("c1", "c2", "c3"), cluster = "A")
 toolAllocateByCrossEntropy(total, prior, mapping, caps = list(source))[["flowsHr"]]
 }

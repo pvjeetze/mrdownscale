@@ -25,7 +25,9 @@
 #' proportion to their stock.
 #'
 #' The flow of a grid cell and cohort never exceeds its stock. A unit flow above the unit stock of
-#' a cohort, and a grid cell total above the grid cell stock, are not allocated.
+#' a cohort, and a grid cell total above the grid cell stock, are not allocated. Stocks and grid cell
+#' totals below \code{tol} times 1e-6 count as zero: as rounding residues of earlier steps, they would
+#' otherwise decide which grid cells and cohorts the fit reaches.
 #'
 #' @param stockHr magclass object of the stock of each grid cell (grid cells x cohorts), without year.
 #' @param flowLr magclass object of the flow of each unit (units x the cohorts of \code{stockHr}), without year.
@@ -88,6 +90,9 @@ toolAllocateCohortFlows <- function(stockHr, flowLr, mapping, totalHr = NULL, to
             "totalHr needs the grid cells of stockHr in its order" =
               is.null(totalHr) || identical(getCells(totalHr), getCells(stockHr)))
   stockAll <- .asMatrix(stockHr)
+  # stocks and totals far below the tolerance are rounding residues; as zero, they cannot change which grid
+  # cells and cohorts the fit reaches
+  stockAll[stockAll < tol * 1e-6] <- 0
   flowUnits <- .asMatrix(flowLr)
 
   if (is.null(totalHr)) {
@@ -99,6 +104,7 @@ toolAllocateCohortFlows <- function(stockHr, flowLr, mapping, totalHr = NULL, to
 
   flow <- stockAll * 0
   totalAll <- as.vector(totalHr)
+  totalAll[totalAll < tol * 1e-6] <- 0
   active <- totalAll > 0
   if (!any(active)) {
     return(.asStock(flow))

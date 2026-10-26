@@ -11,7 +11,9 @@
 #' get this seed in all their grid cells and are fitted again. Then two steps
 #' are repeated (iterative proportional fitting): the grid cells are scaled to their totals, and the
 #' cohorts to the stocks of the units. The repetition stops when the stocks of the units hold up to
-#' \code{tol}; the last step scales the grid cells, so the grid cell totals hold exactly.
+#' \code{tol}; the last step scales the grid cells, so the grid cell totals hold exactly. Stocks below
+#' \code{tol} times 1e-6 count as zero: as rounding residues of earlier steps, they would otherwise decide
+#' which grid cells get the seed.
 #'
 #' Applied after the cohort flows of a time step (see \code{\link{calcAgeClassesHighRes}}), the
 #' area that the fit moves between cohorts, \code{sum(abs(result - stockHr)) / 2}, measures how far
@@ -66,6 +68,9 @@ toolFitCohortStocks <- function(stockHr, stockLr, mapping, tol = 1e-8, maxIter =
             "stockHr needs the grid cell names of mapping" = !anyNA(hrToLr),
             "stockHr and stockLr must have the same cohorts" = identical(getNames(stockHr), getNames(stockLr)))
   stock <- .asMatrix(stockHr)
+  # stocks far below the tolerance are rounding residues; as zero, they cannot change which grid cells the fit
+  # reaches
+  stock[stock < tol * 1e-6] <- 0
   total <- rowSums(stock)
   totalLr <- tapply(total, hrToLr, sum)
   unitsLr <- names(totalLr)

@@ -35,7 +35,9 @@ the cohort composition of the unit times the grid cell total is added; units tha
 get this seed in all their grid cells and are fitted again. Then two steps
 are repeated (iterative proportional fitting): the grid cells are scaled to their totals, and the
 cohorts to the stocks of the units. The repetition stops when the stocks of the units hold up to
-\code{tol}; the last step scales the grid cells, so the grid cell totals hold exactly.
+\code{tol}; the last step scales the grid cells, so the grid cell totals hold exactly. Stocks below
+\code{tol} times 1e-6 count as zero: as rounding residues of earlier steps, they would otherwise decide
+which grid cells get the seed.
 
 Applied after the cohort flows of a time step (see \code{\link{calcAgeClassesHighRes}}), the
 area that the fit moves between cohorts, \code{sum(abs(result - stockHr)) / 2}, measures how far

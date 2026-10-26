@@ -10,3 +10,18 @@ test_that("cell stocks are fitted to the coarse stocks, keeping the cell totals"
   # cell 3 holds only ac0, but its unit has only ac5 and ac10: the seed lets it take them
   expect_equal(as.vector(out["c3", , ]), c(0, 1, 1), tolerance = 1e-6)
 })
+
+test_that("rounding residues in the cell stocks give the result of exact zeros", {
+  # cell 1 holds only ac0, which its unit lacks: the seed lets it take ac5 and ac10 as cell 2
+  stock <- cohortStock(2, 0, 0,
+                       0, 1, 1)
+  stockLr <- cohortFlow(0, 2, 2)
+  mapping <- cellMapping(c("A", "A"))
+  out <- toolFitCohortStocks(stock, stockLr, mapping, tol = 1e-10)
+  expect_equal(as.vector(out), c(0, 0, 1, 1, 1, 1), tolerance = 1e-6)
+  # a residue of ac5 in cell 1 must not keep it from the seed (it would take all of its total as ac5)
+  residue <- stock
+  residue["c1", , "ac5"] <- 1e-17
+  expect_equal(as.vector(toolFitCohortStocks(residue, stockLr, mapping, tol = 1e-10)), as.vector(out),
+               tolerance = 1e-12)
+})

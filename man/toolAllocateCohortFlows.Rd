@@ -59,7 +59,9 @@ unit flow lack stock in a grid cell, the rest of its total comes from its other 
 proportion to their stock.
 
 The flow of a grid cell and cohort never exceeds its stock. A unit flow above the unit stock of
-a cohort, and a grid cell total above the grid cell stock, are not allocated.
+a cohort, and a grid cell total above the grid cell stock, are not allocated. Stocks and grid cell
+totals below \code{tol} times 1e-6 count as zero: as rounding residues of earlier steps, they would
+otherwise decide which grid cells and cohorts the fit reaches.
 }
 \examples{
 stockHr <- new.magpie(c("c1", "c2"), NULL, c("ac0", "ac5"), fill = c(1, 1, 0, 1))

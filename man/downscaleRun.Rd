@@ -4,25 +4,41 @@
 \alias{downscaleRun}
 \title{downscaleRun}
 \usage{
-downscaleRun(outputfolder, ..., cachefolder = NULL)
+downscaleRun(
+  outputfolder,
+  model,
+  ...,
+  cachefolder = NULL,
+  archive = TRUE,
+  cores = 1
+)
 }
 \arguments{
 \item{outputfolder}{path to a folder containing fulldata.gdx and clustermap_*.rds,
-resulting tgz will be written here}
+the results are written here}
 
-\item{...}{arguments passed on to retrieveData,
-e.g. model ("DOWNSCALEDMAGPIE" or "ESM"), rev, harmonizationPeriod}
+\item{model}{name of the full function, e.g. "DOWNSCALEDMAGPIE" or "ESM"}
+
+\item{...}{arguments passed on to retrieveData, e.g. rev, harmonizationPeriod, or with archive = FALSE to
+the full function}
 
 \item{cachefolder}{madrat cache folder for this call, e.g. in the output folder for cache files that only this
 run reuses; NULL (default) keeps the madrat configuration}
+
+\item{archive}{TRUE (default): retrieveData writes the collection as a tgz into the folder; FALSE: the files
+of the collection go to the folder itself, without the tgz and the provenance files of retrieveData
+(config.rds, renv.lock, diagnostics.log), and are computed again on each call}
+
+\item{cores}{number of processes for the allocation kernel (option mrdownscale.cores, see
+\code{\link{toolAllocateByCrossEntropy}}); above 1 not on Windows}
 }
 \value{
-Invisibly, the path to the newly created tgz archive.
+Invisibly, the path to the newly created tgz archive, or the folder with archive = FALSE.
 }
 \description{
-Downscale MAgPIE results from the given folder. The resulting tgz file will
-be generated in the given folder.
+Downscale MAgPIE results from the given folder into that folder, as the tgz of the madrat collection
+or, with archive = FALSE, as its files.
 }
 \author{
-Pascal Sauer
+Pascal Sauer, Patrick v. Jeetze
 }

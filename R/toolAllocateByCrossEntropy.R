@@ -42,6 +42,11 @@
 #' Only the relative prior within a unit and total matters: multiplying the prior of all grid cells
 #' of a unit for one total by a constant does not change the result.
 #'
+#' The units are independent problems. With the option \code{mrdownscale.cores} above 1 (default 1), they
+#' are split into that many sets of about equal numbers of grid cells, which iterate in parallel processes
+#' (\code{parallel::mclapply}, which forks and is therefore not available on Windows). The result does not
+#' depend on the number of processes.
+#'
 #' @param totalLr magclass object of unit totals (units x one year x flows).
 #' @param priorHr magclass object of non-negative prior weights (grid cells x the year of \code{totalLr} x
 #' the flows of \code{totalLr}).
@@ -77,8 +82,8 @@
 #' mapping <- data.frame(cell = c("c1", "c2", "c3"), cluster = "A")
 #' toolAllocateByCrossEntropy(total, prior, mapping, caps = list(source))[["flowsHr"]]
 #' @export
-toolAllocateByCrossEntropy <- function(totalLr, priorHr, mapping, caps = list(), fallbackHr = NULL,
-                                       tol = 1e-8, maxIter = 5000) {
+toolAllocateByCrossEntropy <- function(totalLr, priorHr, mapping, # nolint: cyclocomp_linter
+                                       caps = list(), fallbackHr = NULL, tol = 1e-8, maxIter = 5000) {
   # The iteration runs on matrices (grid cells x flows): written in magclass, it takes about 35 times as long,
   # mostly for selecting grid cells and flows by name in every step.
   .asMatrix <- function(x) {
@@ -158,24 +163,31 @@ toolAllocateByCrossEntropy <- function(totalLr, priorHr, mapping, caps = list(),
   hrToLr <- as.character(mapping[["cluster"]][match(getCells(priorHr), mapping[["cell"]])])
   .checkFlowInput(totalLr, priorHr, hrToLr, caps, fallbackHr)
   total <- .asMatrix(totalLr)
-  capMatrix <- lapply(caps, function(block) .asMatrix(block[["cap"]]))
 
-  # row of total for each grid cell; for each cap block its groups (cap column, flows with sign 1 and -1)
-  # and its lowest factor
+  # row of total for each grid cell
   lrIndex <- match(hrToLr, rownames(total))
-  capGroups <- lapply(caps, function(block) {
+
+  # for each cap block: the caps, the groups (cap column, flows with sign 1 and -1) and the lowest factor
+  capMatrix <- list()
+  capGroups <- list()
+  minFactor <- list()
+  for (b in seq_along(caps)) {
+    block <- caps[[b]]
+    capMatrix[[b]] <- .asMatrix(block[["cap"]])
     column <- match(block[["group"]], getNames(block[["cap"]]))
     sign <- if (is.null(block[["sign"]])) rep(1, ndata(priorHr)) else block[["sign"]]
-    return(lapply(unique(column[!is.na(column)]), function(g) {
+    groupColumns <- unique(column[!is.na(column)])
+    capGroups[[b]] <- lapply(groupColumns, function(g) {
       list(column = g, plus = which(column == g & sign > 0), minus = which(column == g & sign < 0))
-    }))
-  })
-  minFactor <- lapply(caps, function(block) if (is.null(block[["minFactor"]])) 0 else block[["minFactor"]])
+    })
+    minFactor[[b]] <- if (is.null(block[["minFactor"]])) 0 else block[["minFactor"]]
+  }
 
   # start values: the prior, and the fallback for each unit and flow whose prior is zero in all
   # grid cells although the total is positive
   flows <- .asMatrix(priorHr)
-  noPrior <- (rowsum(flows, lrIndex) == 0 & total > 0)[lrIndex, , drop = FALSE]
+  priorSumLr <- rowsum(flows, lrIndex)
+  noPrior <- (priorSumLr == 0 & total > 0)[lrIndex, , drop = FALSE]
   stopifnot("priorHr is zero in all grid cells of a unit for a flow with positive total and no fallbackHr is given" =
               !any(noPrior) | !is.null(fallbackHr))
   if (any(noPrior)) {
@@ -184,52 +196,92 @@ toolAllocateByCrossEntropy <- function(totalLr, priorHr, mapping, caps = list(),
 
   # ---- repeat: scale to the caps, then to the unit totals ------------------------------------
 
-  capFactor <- lapply(capMatrix, function(cap) matrix(1, nrow(cap), ncol(cap), dimnames = dimnames(cap)))
-  flows <- .scaleToTotalsLr(flows, total, lrIndex)
+  # Repeats the two scaling steps for a set of units (rows of total) until each unit has converged. Returns the
+  # flows and cap factors of the grid cells of the set, the residual of its units and the number of iterations.
+  .iterate <- function(set) {
+    setCells <- which(lrIndex %in% set)
+    setIndex <- match(lrIndex[setCells], set)
+    setTotal <- total[set, , drop = FALSE]
+    setFlows <- flows[setCells, , drop = FALSE]
+    setCap <- lapply(capMatrix, function(cap) cap[setCells, , drop = FALSE])
+    setCapFactor <- lapply(setCap, function(cap) matrix(1, nrow(cap), ncol(cap)))
+    residual <- rep(0, length(set))
+    active <- rep(length(caps) > 0, length(set))
+    iter <- 0
 
-  residual <- rep(0, nrow(total))
-  # units are independent problems; a unit stops when it has converged
-  active <- rep(length(caps) > 0, nrow(total))
-  iter <- 0
+    while (iter < maxIter && any(active)) {
+      iter <- iter + 1
+      cells <- which(active[setIndex])
+      activeIndex <- match(setIndex[cells], which(active))
+      activeTotal <- setTotal[active, , drop = FALSE]
+      activeFlows <- setFlows[cells, , drop = FALSE]
 
-  while (iter < maxIter && any(active)) {
-    iter <- iter + 1
-    cells <- which(active[lrIndex])
-    activeIndex <- match(lrIndex[cells], which(active))
-    activeTotal <- total[active, , drop = FALSE]
-    activeFlows <- flows[cells, , drop = FALSE]
-
-    # the groups of a block share no flows, so they are scaled one after another, each only in the grid
-    # cells with flows of the group and a factor other than 1 (most caps bind in few grid cells)
-    for (b in seq_along(caps)) {
-      for (group in capGroups[[b]]) {
-        g <- group[["column"]]
-        plus <- rowSums(activeFlows[, group[["plus"]], drop = FALSE])
-        minus <- rowSums(activeFlows[, group[["minus"]], drop = FALSE])
-        withFlows <- which(plus + minus > 0)
-        factor <- .capScale(plus[withFlows], minus[withFlows], capMatrix[[b]][cells[withFlows], g],
-                            capFactor[[b]][cells[withFlows], g], minFactor[[b]])
-        rows <- withFlows[factor != 1]
-        factor <- factor[factor != 1]
-        if (length(rows) > 0) {
-          activeFlows[rows, group[["plus"]]] <- activeFlows[rows, group[["plus"]], drop = FALSE] * factor
-          # a zero factor occurs only where the flows with sign -1 are zero
-          inverse <- 1 / factor
-          inverse[factor == 0] <- 1
-          activeFlows[rows, group[["minus"]]] <- activeFlows[rows, group[["minus"]], drop = FALSE] * inverse
-          capFactor[[b]][cells[rows], g] <- capFactor[[b]][cells[rows], g] * factor
+      # the groups of a block share no flows, so they are scaled one after another, each only in the grid
+      # cells with flows of the group and a factor other than 1 (most caps bind in few grid cells)
+      for (b in seq_along(caps)) {
+        for (group in capGroups[[b]]) {
+          g <- group[["column"]]
+          plus <- rowSums(activeFlows[, group[["plus"]], drop = FALSE])
+          minus <- rowSums(activeFlows[, group[["minus"]], drop = FALSE])
+          withFlows <- which(plus + minus > 0)
+          factor <- .capScale(plus[withFlows], minus[withFlows], setCap[[b]][cells[withFlows], g],
+                              setCapFactor[[b]][cells[withFlows], g], minFactor[[b]])
+          rows <- withFlows[factor != 1]
+          factor <- factor[factor != 1]
+          if (length(rows) > 0) {
+            activeFlows[rows, group[["plus"]]] <- activeFlows[rows, group[["plus"]], drop = FALSE] * factor
+            # a zero factor occurs only where the flows with sign -1 are zero
+            inverse <- 1 / factor
+            inverse[factor == 0] <- 1
+            activeFlows[rows, group[["minus"]]] <- activeFlows[rows, group[["minus"]], drop = FALSE] * inverse
+            setCapFactor[[b]][cells[rows], g] <- setCapFactor[[b]][cells[rows], g] * factor
+          }
         }
       }
-    }
 
-    # deviation of the unit sums from the totals after scaling to the caps
-    residual[active] <- apply(abs(rowsum(activeFlows, activeIndex) - activeTotal), 1, max)
-    flows[cells, ] <- .scaleToTotalsLr(activeFlows, activeTotal, activeIndex)
-    active[residual < tol] <- FALSE
+      # deviation of the unit sums from the totals after scaling to the caps
+      deviation <- abs(rowsum(activeFlows, activeIndex) - activeTotal)
+      residual[active] <- apply(deviation, 1, max)
+      setFlows[cells, ] <- .scaleToTotalsLr(activeFlows, activeTotal, activeIndex)
+      active[residual < tol] <- FALSE
+    }
+    return(list(cells = setCells, flows = setFlows, capFactor = setCapFactor, residual = residual,
+                iterations = iter))
+  }
+
+  flows <- .scaleToTotalsLr(flows, total, lrIndex)
+
+  # units are independent problems: with the option mrdownscale.cores, they iterate in that many processes,
+  # in sets of consecutive units with about equal numbers of grid cells
+  cores <- getOption("mrdownscale.cores", 1)
+  stopifnot("the option mrdownscale.cores must be one whole number of at least 1" =
+              isTRUE(length(cores) == 1 & all(cores >= 1 & cores == round(cores))))
+  cellsPerUnit <- tabulate(lrIndex, nbins = nrow(total))
+  setOfUnit <- ceiling(cumsum(cellsPerUnit) / sum(cellsPerUnit) * cores)
+  unitSets <- split(seq_len(nrow(total)), setOfUnit)
+  results <- parallel::mclapply(unitSets, .iterate, mc.cores = length(unitSets))
+
+  # the results of each set into the flows, cap factors and residuals of all grid cells and units
+  capFactor <- lapply(capMatrix, function(cap) matrix(1, nrow(cap), ncol(cap)))
+  residual <- rep(0, nrow(total))
+  iter <- 0
+  for (s in seq_along(unitSets)) {
+    result <- results[[s]]
+    if (!is.list(result)) {
+      stop("a parallel process of toolAllocateByCrossEntropy failed (an empty message means it ended without a ",
+           "result, for example out of memory): ", result)
+    }
+    flows[result[["cells"]], ] <- result[["flows"]]
+    for (b in seq_along(caps)) {
+      capFactor[[b]][result[["cells"]], ] <- result[["capFactor"]][[b]]
+    }
+    residual[unitSets[[s]]] <- result[["residual"]]
+    iter <- max(iter, result[["iterations"]])
   }
 
   # unit sums stay below the totals where all grid cells have a zero cap for a flow
-  residual <- pmax(residual, apply(abs(rowsum(flows, lrIndex) - total), 1, max))
+  deviation <- abs(rowsum(flows, lrIndex) - total)
+  residual <- pmax(residual, apply(deviation, 1, max))
 
   if (max(residual) >= tol) {
     warning("toolAllocateByCrossEntropy did not converge in ", sum(residual >= tol), " of ", nrow(total),

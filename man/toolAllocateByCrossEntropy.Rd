@@ -92,6 +92,11 @@ not converge and show a residual of at least \code{tol}.
 
 Only the relative prior within a unit and total matters: multiplying the prior of all grid cells
 of a unit for one total by a constant does not change the result.
+
+The units are independent problems. With the option \code{mrdownscale.cores} above 1 (default 1), they
+are split into that many sets of about equal numbers of grid cells, which iterate in parallel processes
+(\code{parallel::mclapply}, which forks and is therefore not available on Windows). The result does not
+depend on the number of processes.
 }
 \examples{
 total <- new.magpie("A", NULL, c("crop.past", "crop.forestry"), fill = c(2, 1))

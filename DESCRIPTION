@@ -27,6 +27,7 @@ Imports:
     magpie4 (>= 2.34.1),
     mip,
     ncdf4,
+    parallel,
     stats,
     terra,
     utils,

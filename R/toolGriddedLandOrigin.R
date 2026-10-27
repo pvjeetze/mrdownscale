@@ -55,11 +55,12 @@ toolGriddedLandOrigin <- function(transitionsHr, startHr, types, order = "newest
       taken <- .takeArea(area[[k]], total, order)
       area[[k]] <- taken[["area"]]
       inflowSum <- rowSums(inflow[[k]])
-      passing <- inflow[[k]] * pmin(taken[["shortfall"]] / ifelse(inflowSum > 0, inflowSum, 1), 1)
+      passing <- inflow[[k]] * pmin(taken[["shortfall"]] / replace(inflowSum, inflowSum <= 0, 1), 1)
       inflow[[k]] <- inflow[[k]] - passing
       shortfall <- max(shortfall, taken[["shortfall"]] - rowSums(passing))
       for (m in leaving[to[leaving] %in% types]) {
-        carried[[to[m]]] <- carried[[to[m]]] + (taken[["mix"]] + passing) * (flows[, m] / ifelse(total > 0, total, 1))
+        share <- flows[, m] / replace(total, total <= 0, 1)
+        carried[[to[m]]] <- carried[[to[m]]] + (taken[["mix"]] + passing) * share
       }
     }
 
@@ -75,14 +76,14 @@ toolGriddedLandOrigin <- function(transitionsHr, startHr, types, order = "newest
   .takeArea <- function(area, total, order) {
     stock <- rowSums(area)
     if (order == "proportional") {
-      taken <- area * pmin(total / ifelse(stock > 0, stock, 1), 1)
+      taken <- area * pmin(total / replace(stock, stock <= 0, 1), 1)
     } else {
       taken <- array(0, dim(area))
       remaining <- total
       for (e in rev(seq_len(dim(area)[3]))) {
         entry <- rowSums(area[, , e, drop = FALSE])
         take <- pmin(remaining, entry)
-        taken[, , e] <- area[, , e] * (take / ifelse(entry > 0, entry, 1))
+        taken[, , e] <- area[, , e] * (take / replace(entry, entry <= 0, 1))
         remaining <- remaining - take
       }
     }

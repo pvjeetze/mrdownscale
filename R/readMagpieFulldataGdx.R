@@ -106,9 +106,10 @@ readMagpieFulldataGdx <- function(subtype) {
       return(gdx2::readGDX(gdx, module29, module30, format = "first_found"))
     }
     iso <- gdx2::readGDX(gdx, "iso")
-    shareIso <- stats::setNames(rep(as.numeric(.first("s29_snv_shr_noselect", "s30_snv_shr_noselect")),
-                                    length(iso)), iso)
-    shareIso[.first("policy_countries29", "policy_countries30")] <- as.numeric(.first("s29_snv_shr", "s30_snv_shr"))
+    shareNoselect <- as.numeric(.first("s29_snv_shr_noselect", "s30_snv_shr_noselect"))
+    sharePolicy <- as.numeric(.first("s29_snv_shr", "s30_snv_shr"))
+    shareIso <- stats::setNames(rep(shareNoselect, length(iso)), iso)
+    shareIso[.first("policy_countries29", "policy_countries30")] <- sharePolicy
     x <- list(shareIso = shareIso,
               fader = .first("i29_snv_scenario_fader", "p30_snv_scenario_fader"),
               relocationX1 = as.numeric(.first("s29_snv_relocation_data_x1", "s30_snv_relocation_data_x1")),

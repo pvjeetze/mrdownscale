@@ -107,6 +107,104 @@
 toolAllocateTransitions <- function(startHr, mapping, statesLr, transitionsLr, stageRules = NULL, # nolint: cyclocomp_linter
                                     constraints = NULL, layer = NULL, updateLayer = NULL, tol = 1e-8,
                                     maxIter = 200) {
+  # Stops with a message if the inputs of toolAllocateTransitions() do not fit together (the conditions
+  # are checked in order, so each can rely on the ones before).
+  .checkTransitionInput <- function(startHr, hrToLr, statesLr, transitionsLr, constraints) {
+    types <- getNames(startHr)
+    stopifnot(
+      "startHr must be a magclass object with one year" = is.magpie(startHr) & nyears(startHr) == 1,
+      "type names must not contain '.'" = !any(grepl(".", types, fixed = TRUE)),
+      "startHr must not contain NA or negative values" = !anyNA(startHr) & all(startHr >= 0, na.rm = TRUE),
+      "startHr needs the grid cell names of mapping" = !anyNA(hrToLr),
+      "statesLr must be a magclass object with the types of startHr" =
+        is.magpie(statesLr) & setequal(getNames(statesLr), types),
+      "statesLr must not contain NA values" = !anyNA(statesLr),
+      "mapping contains units that are not in statesLr" = all(hrToLr %in% getCells(statesLr)),
+      "transitionsLr must be a magclass object with the units and years of statesLr" =
+        is.magpie(transitionsLr) & setequal(getCells(transitionsLr), getCells(statesLr)) &
+        identical(getYears(transitionsLr), getYears(statesLr)),
+      "transitionsLr needs items 'stage.from.to' with types of startHr" =
+        all(grepl("^[^.]+[.][^.]+[.][^.]+$", getNames(transitionsLr))) &
+        all(getItems(transitionsLr, dim = 3.2, full = TRUE) %in% types) &
+        all(getItems(transitionsLr, dim = 3.3, full = TRUE) %in% types),
+      "transitionsLr must not contain NA or negative values" =
+        !anyNA(transitionsLr) & all(transitionsLr >= 0, na.rm = TRUE),
+      "constraints must be a named list" = length(constraints) == 0 | !is.null(names(constraints))
+    )
+    for (constraint in constraints) {
+      bound <- if (is.null(constraint[["upper"]])) constraint[["lower"]] else constraint[["upper"]]
+      stopifnot(
+        "a constraint contains types not in startHr" = all(constraint[["types"]] %in% types),
+        "each constraint needs exactly one of upper and lower" =
+          is.null(constraint[["upper"]]) != is.null(constraint[["lower"]]),
+        "constraint bounds must be magclass objects with the grid cells of startHr and one item" =
+          isTRUE(is.magpie(bound) & ndata(bound) == 1 & all(getCells(startHr) %in% getCells(bound)))
+      )
+    }
+  }
+
+  # The allocation runs on matrices (grid cells or units x types or transitions), converted from and to
+  # magclass at the interfaces: in magclass, the kernel iteration takes about 35 times as long (see
+  # toolAllocateByCrossEntropy).
+  .asMagpie <- function(x, year = NULL) {
+    out <- new.magpie(rownames(x), year, colnames(x))
+    out[] <- x
+    return(out)
+  }
+  .asMatrix <- function(x) {
+    return(matrix(x, nrow = dim(x)[1], dimnames = list(getCells(x), getNames(x))))
+  }
+
+  # Unit state after the first nAllocated stages of a year (units x types): the state at the end of the
+  # year minus the net change of the later stages; nAllocated = 0 gives the state before the year.
+  .unitState <- function(year, nAllocated) {
+    stages <- stagesLr[[year]]
+    state <- matrix(statesUnits[, , year], nrow = dim(statesUnits)[1], dimnames = dimnames(statesUnits)[1:2])
+    for (total in stages[seq_along(stages) > nAllocated]) {
+      total <- total[rownames(state), , drop = FALSE]
+      from <- sub("[.].*$", "", colnames(total))
+      to <- sub("^.*[.]", "", colnames(total))
+      for (n in seq_len(ncol(total))) {
+        state[, from[n]] <- state[, from[n]] + total[, n]
+        state[, to[n]] <- state[, to[n]] - total[, n]
+      }
+    }
+
+    # rounding in the model output leaves values of about -1e-15
+    state[state < 0] <- 0
+    return(state)
+  }
+
+  # Fits the initial grid cell state to the unit states by iterative proportional fitting: scales each
+  # grid cell to its area and each type to its unit total, ending with the unit totals. Stops when
+  # the grid cell areas hold or no longer improve (where the unit area of start and the summed grid cell
+  # area differ slightly).
+  .fitInitial <- function(initial, hrToLr, start, tol, maxIter = 1000) {
+    lrIndex <- match(hrToLr, rownames(start))
+    start <- start[, colnames(initial), drop = FALSE]
+    cellArea <- rowSums(initial)
+
+    # each type scaled to its unit total; types without area in the grid cells of a unit stay zero
+    .toUnitTotals <- function(state) {
+      sumLr <- rowsum(state, lrIndex)
+      scale <- start / sumLr
+      scale[sumLr == 0] <- 0
+      return(state * scale[lrIndex, , drop = FALSE])
+    }
+
+    state <- .toUnitTotals(initial)
+    areaDeviation <- max(abs(rowSums(state) - cellArea))
+    for (iter in seq_len(maxIter)) {
+      state <- .toUnitTotals(state * ifelse(rowSums(state) > 0, cellArea / rowSums(state), 0))
+      previousDeviation <- areaDeviation
+      areaDeviation <- max(abs(rowSums(state) - cellArea))
+      if (min(areaDeviation, previousDeviation - areaDeviation) < tol) {
+        break
+      }
+    }
+    return(state)
+  }
+
   # Allocates the unit transitions of one stage between different types with a positive total to
   # grid cells and returns the new grid cell state, the grid cell transitions and the diagnostics: the prior is the
   # area of the source type times the weights of input, the area of the source type is a hard cap,
@@ -133,25 +231,31 @@ toolAllocateTransitions <- function(startHr, mapping, statesLr, transitionsLr, s
       fallback <- state[, from, drop = FALSE]
       colnames(fallback) <- colnames(total)
 
-      # soft caps of the stage: for each cap of the year, the transitions that change the area of its
-      # types (member), their sign (1 into the types, -1 out of them), the room per grid cell (cap minus the
+      # soft caps of the stage: for each cap of the year whose area the transitions change, the transitions that
+      # change it (member), their sign (1 into the types, -1 out of them), the room per grid cell (cap minus the
       # current area of the types, negative where the grid cell is above the cap) and the priority
-      softCaps <- lapply(input[["caps"]], function(x) {
+      softCaps <- list()
+      priorities <- numeric(0)
+      for (name in names(input[["caps"]])) {
+        x <- input[["caps"]][[name]]
         into <- to %in% x[["types"]] & !from %in% x[["types"]]
         outOf <- from %in% x[["types"]] & !to %in% x[["types"]]
-        room <- as.vector(x[["cap"]]) - rowSums(state[, x[["types"]], drop = FALSE])
-        return(list(member = into | outOf, sign = ifelse(outOf, -1, 1), cap = room, priority = x[["priority"]]))
-      })
-      softCaps <- softCaps[vapply(softCaps, function(x) any(x[["member"]]), logical(1))]
+        if (any(into | outOf)) {
+          room <- as.vector(x[["cap"]]) - rowSums(state[, x[["types"]], drop = FALSE])
+          softCaps[[name]] <- list(member = into | outOf, sign = ifelse(outOf, -1, 1), cap = room,
+                                   priority = x[["priority"]])
+          priorities <- c(priorities, x[["priority"]])
+        }
+      }
+      priorities <- sort(unique(priorities))
 
       # hard cap: the outflow of a type cannot exceed its area; soft caps with a lower priority get a
       # higher minFactor and are exceeded first
-      priorities <- sort(unique(unlist(lapply(softCaps, function(x) x[["priority"]]))))
       caps <- list(list(group = from, cap = .asMagpie(state)))
       for (name in names(softCaps)) {
         x <- softCaps[[name]]
-        caps[[name]] <- list(group = ifelse(x[["member"]], name, NA), sign = x[["sign"]],
-                             cap = .asMagpie(matrix(x[["cap"]], ncol = 1, dimnames = list(rownames(state), name))),
+        room <- matrix(x[["cap"]], ncol = 1, dimnames = list(rownames(state), name))
+        caps[[name]] <- list(group = ifelse(x[["member"]], name, NA), sign = x[["sign"]], cap = .asMagpie(room),
                              minFactor = 1e-6^match(x[["priority"]], priorities))
       }
 
@@ -160,7 +264,7 @@ toolAllocateTransitions <- function(startHr, mapping, statesLr, transitionsLr, s
       solved <- suppressWarnings(toolAllocateByCrossEntropy(.asMagpie(total), .asMagpie(prior), mapping, caps,
                                                             .asMagpie(fallback), tol, maxIter))
       flows <- matrix(solved[["flowsHr"]], nrow = nrow(state), dimnames = dimnames(prior))
-      flows <- .fitSourceArea(flows, state, from, hrToLr)
+      flows <- .fitSourceArea(flows, state, from, hrToLr, tol)
 
       result <- list(state = .applyFlows(state, flows), flows = flows, residual = as.vector(solved[["residual"]]),
                      iterations = solved[["iterations"]], excess = .constraintExcess(softCaps, flows, hrToLr, tol))
@@ -170,23 +274,11 @@ toolAllocateTransitions <- function(startHr, mapping, statesLr, transitionsLr, s
     return(result)
   }
 
-  # The allocation runs on matrices (grid cells or units x types or transitions), converted from and to
-  # magclass at the interfaces: in magclass, the kernel iteration takes about 35 times as long (see
-  # toolAllocateByCrossEntropy).
-  .asMagpie <- function(x, year = NULL) {
-    out <- new.magpie(rownames(x), year, colnames(x))
-    out[] <- x
-    return(out)
-  }
-  .asMatrix <- function(x) {
-    return(matrix(x, nrow = dim(x)[1], dimnames = list(getCells(x), getNames(x))))
-  }
-
   # Where the outflow of a type exceeds its area in a grid cell (toolAllocateByCrossEntropy stopped before it
   # converged), scales the outflow down to the area and moves the removed area to the grid cells of the
   # unit that have area left, in proportion to that area and at most up to it. The unit totals stay the
   # same unless the unit lacks the room, which is reported.
-  .fitSourceArea <- function(flows, state, from, hrToLr) {
+  .fitSourceArea <- function(flows, state, from, hrToLr, tol) {
     for (type in unique(from)) {
       n <- which(from == type)
       outflow <- rowSums(flows[, n, drop = FALSE])
@@ -203,11 +295,11 @@ toolAllocateTransitions <- function(startHr, mapping, statesLr, transitionsLr, s
       roomCluster <- rowsum(room, hrToLr)[hrToLr, 1]
       removedTotal <- rowSums(removedCluster)
       fill <- ifelse(removedTotal > roomCluster, roomCluster / removedTotal, 1)
-      added <- room / ifelse(roomCluster > 0, roomCluster, 1) * removedCluster * fill
+      added <- room / replace(roomCluster, roomCluster <= 0, 1) * removedCluster * fill
       flows[, n] <- flows[, n, drop = FALSE] + added
 
       lost <- sum(removed) - sum(added)
-      if (lost > 1e-6) {
+      if (lost > tol) {
         warning("outflow above the area of ", type, " could not be moved: ", signif(lost, 3))
       }
     }
@@ -231,24 +323,9 @@ toolAllocateTransitions <- function(startHr, mapping, statesLr, transitionsLr, s
     return(result)
   }
 
-  # New grid cell state: old state minus outflows plus inflows of the grid cell transitions ("from.to").
-  .applyFlows <- function(state, flows) {
-    from <- sub("[.].*$", "", colnames(flows))
-    to <- sub("^.*[.]", "", colnames(flows))
-    for (n in seq_len(ncol(flows))) {
-      state[, from[n]] <- state[, from[n]] - flows[, n]
-      state[, to[n]] <- state[, to[n]] + flows[, n]
-    }
-
-    # outflows can exceed the area by up to tol
-    state[state < 0] <- 0
-    return(state)
-  }
-
   # Grid cell transitions of a type with a target grid cell area, and the other unit transitions balanced
-  # so that the unit states stay those of the model. The target distribution (targetArea, a named list
-  # with one element) is scaled in each unit to the unit area of the type at the end of the stage
-  # (unitState), then:
+  # so that the unit states stay those of the model. The target distribution of the type (targetHr, a vector
+  # by grid cell) is scaled in each unit to the unit area of the type at the end of the stage (unitState), then:
   # 1. the gain and loss per grid cell are the change towards the target, within the area available in the
   #    grid cell; the gain is scaled to keep the model's net change of the unit;
   # 2. the gain comes from the types in the grid cell that can gain or that supply the type in the model, in
@@ -258,15 +335,15 @@ toolAllocateTransitions <- function(startHr, mapping, statesLr, transitionsLr, s
   #    to the types in the grid cell that can gain where the model has no outflow;
   # 4. the other transitions are changed by the net extra loss of each type (.rebalance);
   # 5. what they cannot compensate goes back to the target inflow (.swapSources).
-  .targetFlows <- function(state, mapping, hrToLr, total, targetArea, unitState, allowed, tol) {
-    type <- names(targetArea)
+  .targetFlows <- function(state, mapping, hrToLr, total, type, targetHr, unitState, allowed, tol) {
     types <- colnames(state)
     unitsLr <- rownames(total)
     lrIndex <- match(hrToLr, unitsLr)
 
     # target area of each grid cell: its share of the unit target times the unit area of the type
-    targetSum <- tapply(targetArea[[1]], hrToLr, sum)[unitsLr]
-    targetShare <- targetArea[[1]] / ifelse(targetSum[hrToLr] > 0, targetSum[hrToLr], 1)
+    targetSum <- tapply(targetHr, hrToLr, sum)[unitsLr]
+    targetSumHr <- targetSum[hrToLr]
+    targetShare <- targetHr / replace(targetSumHr, targetSumHr <= 0, 1)
     target <- as.vector(unitState[hrToLr, type] * targetShare)
 
     # unit transitions as an array units x from x to, and the names "from.to" of its pairs
@@ -293,9 +370,10 @@ toolAllocateTransitions <- function(startHr, mapping, statesLr, transitionsLr, s
     # a type can gain if a transition into it is allowed
     canGain <- colSums(allowed) > 0
     canGainCell <- matrix(canGain, nrow(state), length(types), byrow = TRUE)
+    canGainUnit <- matrix(canGain, length(unitsLr), length(types), byrow = TRUE)
 
     # 1. gain and loss per grid cell
-    eligible <- (matrix(canGain, length(unitsLr), length(types), byrow = TRUE) | intoType > 0)
+    eligible <- (canGainUnit | intoType > 0)
     eligible[, type] <- FALSE
     sourceArea <- state * eligible[lrIndex, , drop = FALSE]
     change <- target - state[, type]
@@ -318,8 +396,8 @@ toolAllocateTransitions <- function(startHr, mapping, statesLr, transitionsLr, s
 
     # 2. sources of the gain
     sourceSum <- rowSums(sourceArea)
-    inflow <- gain * (sourceArea / ifelse(sourceSum > 0, sourceSum, 1))
-    limit <- ifelse(matrix(canGain, length(unitsLr), length(types), byrow = TRUE), Inf, intoType)
+    inflow <- gain * (sourceArea / replace(sourceSum, sourceSum <= 0, 1))
+    limit <- ifelse(canGainUnit, Inf, intoType)
     supply <- rowsum(inflow, lrIndex)
     supplyScale <- ifelse(supply > 0, pmin(limit / supply, 1), 1)
     if (any(supplyScale < 1)) {
@@ -328,13 +406,13 @@ toolAllocateTransitions <- function(startHr, mapping, statesLr, transitionsLr, s
       otherArea <- (sourceArea - limited) * canGainCell
       moved <- .byFilling(excess, rowSums(otherArea), as.vector(rowsum(excess, lrIndex)))
       otherSum <- rowSums(otherArea)
-      inflow <- limited + moved * (otherArea / ifelse(otherSum > 0, otherSum, 1))
+      inflow <- limited + moved * (otherArea / replace(otherSum, otherSum <= 0, 1))
     }
 
     # 3. destinations of the loss
     outSum <- rowSums(outOfType)
-    destinationShare <- (outOfType / ifelse(outSum > 0, outSum, 1))[lrIndex, , drop = FALSE]
-    destinationShare[noModelOutflow, ] <- (gainArea / ifelse(gainSum > 0, gainSum, 1))[noModelOutflow, ]
+    destinationShare <- (outOfType / replace(outSum, outSum <= 0, 1))[lrIndex, , drop = FALSE]
+    destinationShare[noModelOutflow, ] <- (gainArea / replace(gainSum, gainSum <= 0, 1))[noModelOutflow, ]
     outflow <- loss * destinationShare
     # grid cell transitions into and out of the type ("from.to"), without those that are zero in all grid cells
     flows <- cbind(inflow, outflow)
@@ -467,89 +545,18 @@ toolAllocateTransitions <- function(startHr, mapping, statesLr, transitionsLr, s
     return(list(m = m, moved = moved))
   }
 
-  # Unit state after the first nAllocated stages of a year (units x types): the state at the end of the
-  # year minus the net change of the later stages; nAllocated = 0 gives the state before the year.
-  .unitState <- function(year, nAllocated) {
-    stages <- stagesLr[[year]]
-    state <- matrix(statesUnits[, , year], nrow = dim(statesUnits)[1], dimnames = dimnames(statesUnits)[1:2])
-    for (total in stages[seq_along(stages) > nAllocated]) {
-      total <- total[rownames(state), , drop = FALSE]
-      from <- sub("[.].*$", "", colnames(total))
-      to <- sub("^.*[.]", "", colnames(total))
-      for (n in seq_len(ncol(total))) {
-        state[, from[n]] <- state[, from[n]] + total[, n]
-        state[, to[n]] <- state[, to[n]] - total[, n]
-      }
+  # New grid cell state: old state minus outflows plus inflows of the grid cell transitions ("from.to").
+  .applyFlows <- function(state, flows) {
+    from <- sub("[.].*$", "", colnames(flows))
+    to <- sub("^.*[.]", "", colnames(flows))
+    for (n in seq_len(ncol(flows))) {
+      state[, from[n]] <- state[, from[n]] - flows[, n]
+      state[, to[n]] <- state[, to[n]] + flows[, n]
     }
 
-    # rounding in the model output leaves values of about -1e-15
+    # outflows can exceed the area by up to tol
     state[state < 0] <- 0
     return(state)
-  }
-
-  # Fits the initial grid cell state to the unit states by iterative proportional fitting: scales each
-  # grid cell to its area and each type to its unit total, ending with the unit totals. Stops when
-  # the grid cell areas hold or no longer improve (where the unit area of start and the summed grid cell
-  # area differ slightly).
-  .fitInitial <- function(initial, hrToLr, start, tol, maxIter = 1000) {
-    lrIndex <- match(hrToLr, rownames(start))
-    start <- start[, colnames(initial), drop = FALSE]
-    cellArea <- rowSums(initial)
-
-    # each type scaled to its unit total; types without area in the grid cells of a unit stay zero
-    .toUnitTotals <- function(state) {
-      sumLr <- rowsum(state, lrIndex)
-      scale <- start / sumLr
-      scale[sumLr == 0] <- 0
-      return(state * scale[lrIndex, , drop = FALSE])
-    }
-
-    state <- .toUnitTotals(initial)
-    areaDeviation <- max(abs(rowSums(state) - cellArea))
-    for (iter in seq_len(maxIter)) {
-      state <- .toUnitTotals(state * ifelse(rowSums(state) > 0, cellArea / rowSums(state), 0))
-      previousDeviation <- areaDeviation
-      areaDeviation <- max(abs(rowSums(state) - cellArea))
-      if (min(areaDeviation, previousDeviation - areaDeviation) < tol) {
-        break
-      }
-    }
-    return(state)
-  }
-
-  # Stops with a message if the inputs of toolAllocateTransitions() do not fit together (the conditions
-  # are checked in order, so each can rely on the ones before).
-  .checkTransitionInput <- function(startHr, hrToLr, statesLr, transitionsLr, constraints) {
-    types <- getNames(startHr)
-    stopifnot(
-      "startHr must be a magclass object with one year" = is.magpie(startHr) & nyears(startHr) == 1,
-      "type names must not contain '.'" = !any(grepl(".", types, fixed = TRUE)),
-      "startHr must not contain NA or negative values" = !anyNA(startHr) & all(startHr >= 0, na.rm = TRUE),
-      "startHr needs the grid cell names of mapping" = !anyNA(hrToLr),
-      "statesLr must be a magclass object with the types of startHr" =
-        is.magpie(statesLr) & setequal(getNames(statesLr), types),
-      "statesLr must not contain NA values" = !anyNA(statesLr),
-      "mapping contains units that are not in statesLr" = all(hrToLr %in% getCells(statesLr)),
-      "transitionsLr must be a magclass object with the units and years of statesLr" =
-        is.magpie(transitionsLr) & setequal(getCells(transitionsLr), getCells(statesLr)) &
-        identical(getYears(transitionsLr), getYears(statesLr)),
-      "transitionsLr needs items 'stage.from.to' with types of startHr" =
-        all(grepl("^[^.]+[.][^.]+[.][^.]+$", getNames(transitionsLr))) &
-        all(getItems(transitionsLr, dim = 3.2, full = TRUE) %in% types) &
-        all(getItems(transitionsLr, dim = 3.3, full = TRUE) %in% types),
-      "transitionsLr must not contain NA or negative values" =
-        !anyNA(transitionsLr) & all(transitionsLr >= 0, na.rm = TRUE),
-      "constraints must be a named list" = length(constraints) == 0 | !is.null(names(constraints)),
-      "a constraint contains types not in startHr" =
-        all(vapply(constraints, function(x) all(x[["types"]] %in% types), logical(1))),
-      "each constraint needs exactly one of upper and lower" =
-        all(vapply(constraints, function(x) is.null(x[["upper"]]) != is.null(x[["lower"]]), logical(1))),
-      "constraint bounds must be magclass objects with the grid cells of startHr and one item" =
-        all(vapply(constraints, function(x) {
-          bound <- if (is.null(x[["upper"]])) x[["lower"]] else x[["upper"]]
-          return(is.magpie(bound) && ndata(bound) == 1 && all(getCells(startHr) %in% getCells(bound)))
-        }, logical(1)))
-    )
   }
 
 
@@ -562,7 +569,8 @@ toolAllocateTransitions <- function(startHr, mapping, statesLr, transitionsLr, s
 
   # unit states (units x types x years), unit transitions by year and stage (units x "from.to") and the
   # bounds of the constraints (grid cells x years)
-  statesUnits <- aperm(as.array(statesLr)[unitsLr, years, types, drop = FALSE], c(1, 3, 2))
+  statesArray <- as.array(statesLr)[unitsLr, years, types, drop = FALSE]
+  statesUnits <- aperm(statesArray, c(1, 3, 2))
   stageOf <- getItems(transitionsLr, dim = 3.1, full = TRUE)
   stagesLr <- list()
   for (year in years) {
@@ -595,7 +603,9 @@ toolAllocateTransitions <- function(startHr, mapping, statesLr, transitionsLr, s
     caps <- list()
     for (name in names(constraints)) {
       x <- constraints[[name]]
-      bound <- bounds[[name]][, max(c(1, which(colnames(bounds[[name]]) <= year)))]
+      boundYears <- colnames(bounds[[name]])
+      latest <- max(c(1, which(boundYears <= year)))
+      bound <- bounds[[name]][, latest]
       if (is.null(x[["upper"]])) {
         caps[[name]] <- list(types = setdiff(types, x[["types"]]), cap = cellArea - bound)
       } else {
@@ -624,8 +634,8 @@ toolAllocateTransitions <- function(startHr, mapping, statesLr, transitionsLr, s
         if (ndata(input[["targetArea"]]) != 1) {
           stop("targetArea must name one type")
         }
-        targetArea <- stats::setNames(list(as.vector(input[["targetArea"]][cells, , ])),
-                                      getNames(input[["targetArea"]]))
+        targetType <- getNames(input[["targetArea"]])
+        targetHr <- as.vector(input[["targetArea"]][cells, , ])
         allowed <- NULL
         if (!is.null(input[["allowedTransitions"]])) {
           pairs <- input[["allowedTransitions"]]
@@ -633,7 +643,7 @@ toolAllocateTransitions <- function(startHr, mapping, statesLr, transitionsLr, s
           allowed[cbind(sub("[.].*$", "", pairs), sub("^.*[.]", "", pairs))] <- TRUE
         }
         unitState <- .unitState(year, match(stage, names(stagesLr[[year]])))
-        target <- .targetFlows(state, mapping, hrToLr, total, targetArea, unitState, allowed, tol)
+        target <- .targetFlows(state, mapping, hrToLr, total, targetType, targetHr, unitState, allowed, tol)
         result <- .allocateStage(.applyFlows(state, target[["flows"]]), mapping, hrToLr, target[["rest"]],
                                  input, tol, maxIter)
         result[["flows"]] <- cbind(target[["flows"]], result[["flows"]])
@@ -675,7 +685,8 @@ toolAllocateTransitions <- function(startHr, mapping, statesLr, transitionsLr, s
   # the transitions, the largest output, in the order of the stages, assembled in an array: assembled in magclass
   # (year by year or with mbind), they take five to seven times their size in memory
   items <- unique(unlist(lapply(flowsOut, colnames)))
-  items <- items[order(match(sub("[.].*$", "", items), unique(stageOf)))]
+  itemStage <- sub("[.].*$", "", items)
+  items <- items[order(match(itemStage, unique(stageOf)))]
   values <- array(0, c(length(cells), length(years), length(items)), list(cells, years, items))
   for (year in years) {
     values[, year, colnames(flowsOut[[year]])] <- flowsOut[[year]]

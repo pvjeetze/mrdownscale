@@ -92,12 +92,6 @@ calcLandTransitionsHighRes <- function(input, target = "landuseinit", harmonizat
     return(out)
   }
 
-  # Labels "land.type" of the sub-types (type "total" for land types without sub-types).
-  .typeLabels <- function() {
-    subType <- ifelse(names(mainOf) == mainOf, "total", names(mainOf))
-    return(stats::setNames(paste(mainOf, subType, sep = "."), names(mainOf)))
-  }
-
   # Shares of the items in each unit and year; units without area take the shares of all units, copied
   # to the grid cells of each unit, the first year also used for the start (y1985).
   .gridShares <- function(x, mapping) {
@@ -208,17 +202,21 @@ calcLandTransitionsHighRes <- function(input, target = "landuseinit", harmonizat
   }
 
   # the unit totals hold exactly (see .fitSourceArea in toolAllocateTransitions), so the constraints
-  # need not converge further than 1e-6 Mha per unit
+  # need not converge further than 1e-6 Mha per unit; the optimisation stage usually stops at this limit, with
+  # a median remaining residual of about 0.005-0.01 Mha per unit
   result <- toolAllocateTransitions(transitions[["startHr"]], mapping, transitions[["statesLr"]],
                                     transitions[["transitionsLr"]], stageRules, constraints, layer = layer,
-                                    updateLayer = updateLayer, tol = 1e-6)
+                                    updateLayer = updateLayer, tol = 1e-6, maxIter = 300)
 
   # =================================================================================================
   # Outputs
   # =================================================================================================
 
+  # labels "land.type" of the sub-types (type "total" for land types without sub-types)
+  subType <- ifelse(names(mainOf) == mainOf, "total", names(mainOf))
+  label <- stats::setNames(paste(mainOf, subType, sep = "."), names(mainOf))
+
   # grid cell land by land type and sub-type ("land.type"), the start labelled y1985
-  label <- .typeLabels()
   landHr <- mbind(setYears(result[["startHr"]], "y1985"), result[["stateHr"]])
   getNames(landHr) <- unname(label[getNames(landHr)])
   getSets(landHr, fulldim = FALSE) <- c("x.y.iso", "year", "land.type")

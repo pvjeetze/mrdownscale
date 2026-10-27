@@ -1,9 +1,9 @@
 test_that("cell stocks are fitted to the coarse stocks, keeping the cell totals", {
-  stock <- cohortStock(1, 0, 0,
-                       0, 1, 1,
-                       2, 0, 0)
-  stockLr <- cohortFlow(1, 1, 1,
-                        0, 1, 1)
+  stock <- cohortHr(1, 0, 0,
+                    0, 1, 1,
+                    2, 0, 0)
+  stockLr <- cohortLr(1, 1, 1,
+                      0, 1, 1)
   out <- toolFitCohortStocks(stock, stockLr, cellMapping(c("A", "A", "B")), tol = 1e-10)
   expect_equal(as.vector(dimSums(out, dim = 3)), c(1, 2, 2), tolerance = 1e-12)
   expect_equal(as.vector(dimSums(out[c("c1", "c2"), , ], dim = 1)), as.vector(stockLr["A", , ]), tolerance = 1e-8)
@@ -13,9 +13,9 @@ test_that("cell stocks are fitted to the coarse stocks, keeping the cell totals"
 
 test_that("rounding residues in the cell stocks give the result of exact zeros", {
   # cell 1 holds only ac0, which its unit lacks: the seed lets it take ac5 and ac10 as cell 2
-  stock <- cohortStock(2, 0, 0,
-                       0, 1, 1)
-  stockLr <- cohortFlow(0, 2, 2)
+  stock <- cohortHr(2, 0, 0,
+                    0, 1, 1)
+  stockLr <- cohortLr(0, 2, 2)
   mapping <- cellMapping(c("A", "A"))
   out <- toolFitCohortStocks(stock, stockLr, mapping, tol = 1e-10)
   expect_equal(as.vector(out), c(0, 0, 1, 1, 1, 1), tolerance = 1e-6)

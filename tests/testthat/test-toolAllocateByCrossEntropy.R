@@ -10,13 +10,8 @@ unitValues <- function(values, units, names) {
   return(new.magpie(units, NULL, names, fill = values))
 }
 
-# sums over the grid cells of each unit, in the order of the units of total
-unitSums <- function(x, cluster, total) {
-  return(toolAggregate(x, cellMapping(cluster), from = "cell", to = "cluster")[getCells(total), , ])
-}
-
 # transitions between three land types in two clusters with source and destination caps
-makeTransitions <- function(seed = 2) {
+makeCappedFlows <- function(seed = 2) {
   set.seed(seed)
   types <- c("a", "b", "c")
   flows <- expand.grid(from = types, to = types, stringsAsFactors = FALSE)
@@ -55,12 +50,12 @@ test_that("uncapped case equals the closed form", {
   res <- toolAllocateByCrossEntropy(total, prior, cellMapping(cluster))
   # each flow of a unit in proportion to the prior
   .onCells <- function(xLr) toolAggregate(xLr, cellMapping(cluster), from = "cluster", to = "cell")
-  expected <- prior / .onCells(unitSums(prior, cluster, total)) * .onCells(total)
+  expected <- prior / .onCells(unitSums(prior, cluster)) * .onCells(total)
   expect_equal(as.vector(res[["flowsHr"]]), as.vector(expected), tolerance = 1e-12)
 })
 
 test_that("prior scale within a cluster and flow does not matter", {
-  tr <- makeTransitions()
+  tr <- makeCappedFlows()
   caps <- list(tr[["srcBlock"]])
   res1 <- toolAllocateByCrossEntropy(tr[["total"]], tr[["prior"]], cellMapping(tr[["cluster"]]), caps, tol = 1e-12)
   prior2 <- tr[["prior"]]
@@ -88,7 +83,7 @@ test_that("single capped flow equals water-filling", {
 })
 
 test_that("two binding cap blocks satisfy the optimality conditions", {
-  tr <- makeTransitions()
+  tr <- makeCappedFlows()
   tol <- 1e-12
   res <- toolAllocateByCrossEntropy(tr[["total"]], tr[["prior"]], cellMapping(tr[["cluster"]]),
                                     list(tr[["srcBlock"]], tr[["dstBlock"]]), tol = tol)
@@ -100,7 +95,8 @@ test_that("two binding cap blocks satisfy the optimality conditions", {
   expect_gte(sum(beta2 < 1 - 1e-6), 2)
 
   # (a) cluster totals
-  expect_equal(as.vector(unitSums(x, tr[["cluster"]], tr[["total"]])), as.vector(tr[["total"]]), tolerance = 1e-12)
+  expect_equal(as.vector(unitSums(x, tr[["cluster"]])[getCells(tr[["total"]]), , ]), as.vector(tr[["total"]]),
+               tolerance = 1e-12)
   # (b) caps: the flows of each group summed per grid cell
   .groupSum <- function(group, cap) {
     out <- cap * 0
@@ -140,7 +136,7 @@ test_that("two binding cap blocks satisfy the optimality conditions", {
 })
 
 test_that("result does not depend on the order of blocks and cells", {
-  tr <- makeTransitions()
+  tr <- makeCappedFlows()
   res1 <- toolAllocateByCrossEntropy(tr[["total"]], tr[["prior"]], cellMapping(tr[["cluster"]]),
                                      list(tr[["srcBlock"]], tr[["dstBlock"]]), tol = 1e-12)
   set.seed(2)
@@ -150,6 +146,30 @@ test_that("result does not depend on the order of blocks and cells", {
   res2 <- toolAllocateByCrossEntropy(tr[["total"]], tr[["prior"]][perm, , ], cellMapping(tr[["cluster"]]),
                                      capsPermuted, tol = 1e-12)
   expect_equal(res2[["flowsHr"]][getCells(res1[["flowsHr"]]), , ], res1[["flowsHr"]], tolerance = 1e-10)
+})
+
+test_that("result does not depend on the number of processes", {
+  # parallel::mclapply forks, which Windows cannot
+  skip_on_os("windows")
+  tr <- makeCappedFlows()
+  # grid cells of the clusters interleaved, so that the sets of units are not blocks of grid cells
+  set.seed(3)
+  perm <- sample(ncells(tr[["prior"]]))
+  caps <- list(list(group = tr[["srcBlock"]][["group"]], cap = tr[["srcBlock"]][["cap"]][perm, , ]),
+               list(group = tr[["dstBlock"]][["group"]], cap = tr[["dstBlock"]][["cap"]][perm, , ]))
+  .allocate <- function() {
+    return(toolAllocateByCrossEntropy(tr[["total"]], tr[["prior"]][perm, , ], cellMapping(tr[["cluster"]]), caps))
+  }
+  res1 <- .allocate()
+  withr::local_options(mrdownscale.cores = 2)
+  expect_identical(.allocate(), res1)
+})
+
+test_that("the option mrdownscale.cores is checked", {
+  small <- makeSmall()
+  withr::local_options(mrdownscale.cores = 1.5)
+  expect_error(toolAllocateByCrossEntropy(small[["total"]], small[["prior"]], cellMapping(small[["cluster"]]),
+                                          small[["caps"]]), "mrdownscale.cores")
 })
 
 test_that("zero totals and zero caps give zero flows", {
@@ -189,7 +209,8 @@ test_that("infeasible caps show as residual", {
   )
   expect_gte(as.vector(res[["residual"]]["J1", , ]), 1e-8)
   expect_lt(as.vector(res[["residual"]]["J2", , ]), 1e-8)
-  expect_equal(as.vector(unitSums(res[["flowsHr"]], cluster, total)), as.vector(total), tolerance = 1e-12)
+  expect_equal(as.vector(unitSums(res[["flowsHr"]], cluster)[getCells(total), , ]), as.vector(total),
+               tolerance = 1e-12)
 })
 
 test_that("soft caps hold where feasible and are exceeded at least cost where not", {

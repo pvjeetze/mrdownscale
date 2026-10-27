@@ -52,12 +52,14 @@ calcAgeClassesHighRes <- function(input, harmonization = "none") { # nolint: cyc
   ageClasses <- getItems(stocksLr, dim = "ac")
   yearNumbers <- getYears(stocksLr, as.integer = TRUE)
   zeroHr <- new.magpie(cells, NULL, NULL, fill = 0)
+  # tolerance of the cohort kernels (Mha)
+  tol <- 1e-6
 
   # unit stock of each land type by age class, and its grid cell land
-  stockLr <- list()
+  poolStockLr <- list()
   landOfPool <- list()
   for (pool in pools) {
-    stockLr[[pool]] <- collapseDim(stocksLr[, , pool], dim = c(3.1, 3.2))
+    poolStockLr[[pool]] <- collapseDim(stocksLr[, , pool], dim = c(3.1, 3.2))
     landOfPool[[pool]] <- collapseDim(landHr[, , pool], dim = 3)
   }
 
@@ -71,7 +73,7 @@ calcAgeClassesHighRes <- function(input, harmonization = "none") { # nolint: cyc
   # first year: the age composition of the unit in each grid cell (equal shares where the unit has no stock)
   stock <- list()
   for (pool in pools) {
-    unitStock <- .unitAges(stockLr[[pool]], years[1])
+    unitStock <- .unitAges(poolStockLr[[pool]], years[1])
     stockSum <- dimSums(unitStock, dim = 3)
     share <- unitStock / stockSum
     share[is.nan(share)] <- 1 / length(ageClasses)
@@ -107,7 +109,7 @@ calcAgeClassesHighRes <- function(input, harmonization = "none") { # nolint: cyc
           cellTotal <- .cellFlow(flows, stage %in% operation[["stages"]] & from == operation[["from"]] &
                                    to == operation[["to"]])
           moved <- toolAllocateCohortFlows(stock[[operation[["from"]]]], .unitAges(operation[["flowLr"]], year),
-                                           mapping, cellTotal, tol = 1e-6)
+                                           mapping, cellTotal, tol = tol)
           stock[[operation[["from"]]]] <- stock[[operation[["from"]]]] - moved
           stock[[operation[["to"]]]] <- stock[[operation[["to"]]]] + moved
         } else if (operation[["kind"]] == "shift") {
@@ -122,7 +124,7 @@ calcAgeClassesHighRes <- function(input, harmonization = "none") { # nolint: cyc
           passThrough[[pool]] <- sum(through)
 
           left <- toolAllocateCohortFlows(stock[[pool]], .unitAges(operation[["outflowLr"]], year), mapping,
-                                          outflow - through, tol = 1e-6)
+                                          outflow - through, tol = tol)
           stock[[pool]] <- stock[[pool]] - left
           regrowth <- toolAllocateCohortFlows(stock[[pool]], .unitAges(operation[["regrowthLr"]], year), mapping)
           stock[[pool]] <- .toEntry(stock[[pool]] - regrowth, dimSums(regrowth, dim = 3) + inflow - through, nShift)
@@ -134,14 +136,16 @@ calcAgeClassesHighRes <- function(input, harmonization = "none") { # nolint: cyc
 
     # fit to the unit stocks, store and diagnose
     for (pool in pools) {
-      unitStock <- .unitAges(stockLr[[pool]], year)
+      unitStock <- .unitAges(poolStockLr[[pool]], year)
       tracked <- stock[[pool]]
-      stock[[pool]] <- toolFitCohortStocks(tracked, unitStock, mapping, tol = 1e-6)
+      stock[[pool]] <- toolFitCohortStocks(tracked, unitStock, mapping, tol = tol)
       type <- sub("^.*[.]", "", pool)
+      label <- ifelse(type == "total", sub("[.].*$", "", pool), type)
       fittedLr <- toolAggregate(stock[[pool]], mapping, from = "cell", to = "cluster")[units, , ]
+      areaHr <- dimSums(stock[[pool]], dim = 3)
+      landYearHr <- setYears(landOfPool[[pool]][, year, ], NULL)
       diagnostics[[length(diagnostics) + 1]] <- data.frame(
-        year = year, type = ifelse(type == "total", sub("[.].*$", "", pool), type),
-        gridCellDeviation = max(abs(dimSums(stock[[pool]], dim = 3) - setYears(landOfPool[[pool]][, year, ], NULL))),
+        year = year, type = label, gridCellDeviation = max(abs(areaHr - landYearHr)),
         clusterDeviation = sum(abs(fittedLr - unitStock)),
         clusterArea = sum(unitStock), passThrough = passThrough[[pool]],
         movedByFit = sum(abs(stock[[pool]] - tracked)) / 2

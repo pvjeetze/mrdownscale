@@ -44,6 +44,11 @@
 #' toolDownscalePeatland(landHr, peatlandLr, peatlandStartHr, mapping, rewettingHr)
 #' @export
 toolDownscalePeatland <- function(landHr, peatlandLr, peatlandStartHr, mapping, rewettingHr = NULL) {
+  # Cluster values on the grid cells of activeMapping.
+  .onCells <- function(xLr, activeMapping) {
+    return(toolAggregate(xLr, activeMapping, from = "cluster", to = "cell"))
+  }
+
   cells <- getCells(landHr)
   cluster <- as.character(mapping[["cluster"]][match(cells, mapping[["cell"]])])
   stopifnot("mapping lacks grid cells of landHr" = !anyNA(cluster))
@@ -51,12 +56,6 @@ toolDownscalePeatland <- function(landHr, peatlandLr, peatlandStartHr, mapping, 
   categories <- getNames(peatlandLr)
   drained <- intersect(categories, c("crop", "past", "forestry"))
   landType <- getItems(landHr, dim = 3.1, full = TRUE)
-
-  # Denominator of a share: values that are not positive become 1.
-  .denominator <- function(x) {
-    x[x <= 0] <- 1
-    return(x)
-  }
 
   # land of the drained categories (crop, past, forestry), sub-types summed
   land <- new.magpie(cells, years, drained, fill = 0)
@@ -83,9 +82,6 @@ toolDownscalePeatland <- function(landHr, peatlandLr, peatlandStartHr, mapping, 
     hasPeat <- as.vector(dimSums(current, dim = 3)) > 0
     active <- hasPeat | !(cluster %in% cluster[hasPeat])
     activeMapping <- data.frame(cell = cells[active], cluster = cluster[active])
-    .onCells <- function(xLr) {
-      return(toolAggregate(xLr, activeMapping, from = "cluster", to = "cell"))
-    }
     peat <- current[active, , ]
     total <- setYears(peatlandLr[, year, categories], NULL)
 
@@ -94,14 +90,15 @@ toolDownscalePeatland <- function(landHr, peatlandLr, peatlandStartHr, mapping, 
     # area goes to the growing categories in proportion to their cluster growth
     previousTotal <- toolAggregate(peat, activeMapping, from = "cell", to = "cluster")[getCells(total), , ]
     change <- total - previousTotal
-    shrinkShare <- pmax(-change, 0) / .denominator(previousTotal)
-    growShare <- pmax(change, 0) / .denominator(dimSums(pmax(-change, 0), dim = 3))
-    shrink <- peat * .onCells(shrinkShare)
+    shrinkSum <- dimSums(pmax(-change, 0), dim = 3)
+    shrinkShare <- pmax(-change, 0) / replace(previousTotal, previousTotal <= 0, 1)
+    growShare <- pmax(change, 0) / replace(shrinkSum, shrinkSum <= 0, 1)
+    shrink <- peat * .onCells(shrinkShare, activeMapping)
     lossYear <- setYears(loss[active, year, ], NULL)
     if (sum(lossYear) > 0) {
       shrink[, , drained] <- pmin(lossYear, peat[, , drained])
     }
-    prior <- peat - shrink + dimSums(shrink, dim = 3) * .onCells(growShare)
+    prior <- peat - shrink + dimSums(shrink, dim = 3) * .onCells(growShare, activeMapping)
 
     # caps: the peat area of each grid cell, and drained peat within the land of its type (soft)
     area <- dimSums(peat, dim = 3)

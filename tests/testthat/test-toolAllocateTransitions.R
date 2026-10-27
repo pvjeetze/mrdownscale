@@ -2,11 +2,6 @@
 
 landTypes <- c("crop", "past", "forest", "urban", "other")
 
-# sums over the grid cells of each unit
-unitSums <- function(x, cluster) {
-  return(toolAggregate(x, cellMapping(cluster), from = "cell", to = "cluster"))
-}
-
 maxAbs <- function(a, b) {
   return(max(abs(as.vector(a) - as.vector(b))))
 }
@@ -434,7 +429,7 @@ test_that("constraints use the bound of the latest year, and a lower bound limit
   expect_equal(as.vector(res[["stateHr"]][, , "crop"]), c(0.5, 1.5), tolerance = 1e-6)
 })
 
-test_that("the deviation from the unit states is reported, and a target is scaled to the unit totals", {
+test_that("the deviation from the unit states is reported", {
   land <- makeLand()
   transitions <- makeTransitions(land[["start"]])
   states <- unitStates(land[["start"]], transitions)
@@ -445,8 +440,11 @@ test_that("the deviation from the unit states is reported, and a target is scale
   shifted[, "y2010", "crop"] <- shifted[, "y2010", "crop"] + 0.01
   res <- toolAllocateTransitions(land[["initial"]], cellMapping(land[["cluster"]]), shifted, transitions)
   expect_equal(res[["deviationLr"]], 0.01, tolerance = 1e-6)
+})
 
+test_that("a target is scaled to the unit totals", {
   # a target given as distribution (three times the area) gives the same result as the target in Mha
+  land <- makeLand()
   total <- makeTargetTotals(land[["start"]])
   stages <- oneStage(total)
   rules <- urbanTarget(total, land[["cluster"]])

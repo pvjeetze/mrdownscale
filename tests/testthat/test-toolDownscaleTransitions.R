@@ -14,8 +14,8 @@ test_that("downscaling along the net transitions keeps the unit states and the g
   expect_equal(getYears(out), c("y2025", "y2030"))
   expect_equal(unname(getSets(out)), c("x", "y", "year", "data"))
   # the unit states hold, and the area of each grid cell stays the same
-  unitSums <- toolAggregate(out, data.frame(from = cells, to = mapping[["lowRes"]]), from = "from", to = "to")
-  expect_equal(as.vector(unitSums[c("A.1", "B.2"), , ]), as.vector(x[, -1, ]), tolerance = 1e-6)
+  statesLr <- toolAggregate(out, data.frame(from = cells, to = mapping[["lowRes"]]), from = "from", to = "to")
+  expect_equal(as.vector(statesLr[c("A.1", "B.2"), , ]), as.vector(x[, -1, ]), tolerance = 1e-6)
   expect_equal(as.vector(dimSums(out, dim = 3)), rep(1, 8), tolerance = 1e-8)
   # unit A loses crop in proportion to the crop of its grid cells; B gains it from secdf
   expect_equal(as.vector(out[c("1p25.1p25", "2p25.2p25"), "y2025", "crop"]), c(0.48, 0.12), tolerance = 1e-6)

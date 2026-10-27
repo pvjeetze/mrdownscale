@@ -137,7 +137,8 @@ calcLandTransitionsInput <- function(input) {
       targetData <- readSource("MagpieRunFiles", subtype = "snvTarget")
       stopifnot("SNVTargetCropland_0.5.mz lacks grid cells of the start map" = all(cells %in% getCells(targetData)))
       targetData <- setYears(targetData[cells, , ], NULL)
-      share <- new.magpie(cells, NULL, fill = unname(snv[["shareIso"]][getItems(targetData, dim = 1.3, full = TRUE)]))
+      isoOfCell <- getItems(targetData, dim = 1.3, full = TRUE)
+      share <- new.magpie(cells, NULL, fill = unname(snv[["shareIso"]][isoOfCell]))
       target20 <- collapseDim(targetData[, , "SNV20TargetCropland"], dim = 3)
       target50 <- collapseDim(targetData[, , "SNV50TargetCropland"], dim = 3)
       x1 <- snv[["relocationX1"]]
@@ -172,7 +173,8 @@ calcLandTransitionsInput <- function(input) {
       urbanHr <- urbanHr[cells, , cfg$gms$c34_urban_scenario]
       getNames(urbanHr) <- "urban"
       upper <- dataLr[["transitionsUpper"]]
-      mainAllowed <- getNames(upper)[as.vector(dimSums((upper > 0) * 1, dim = c(1, 2)) > 0)]
+      unitsWithUpper <- dimSums((upper > 0) * 1, dim = c(1, 2))
+      mainAllowed <- getNames(upper)[as.vector(unitsWithUpper) > 0]
       pairs <- expand.grid(from = types, to = types, stringsAsFactors = FALSE)
       allowed <- pairs[["from"]] != pairs[["to"]] &
         paste(mainOf[pairs[["from"]]], mainOf[pairs[["to"]]], sep = ".") %in% mainAllowed &

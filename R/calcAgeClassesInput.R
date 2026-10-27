@@ -31,19 +31,20 @@
 #' @author Patrick v. Jeetze
 #' @seealso \code{\link{calcAgeClassesHighRes}}
 calcAgeClassesInput <- function(input) {
+  # Unit flow of a process and land type by age class.
+  .flow <- function(flowsLr, process, pool) {
+    return(collapseDim(flowsLr[, , paste(process, pool, sep = ".")], dim = c(3.1, 3.2, 3.3)))
+  }
+
   if (input == "magpie") {
     stocksLr <- readSource("MagpieFulldataGdx", subtype = "ageClasses")
     flowsLr <- readSource("MagpieFulldataGdx", subtype = "ageClassTransitions")
     mapping <- readSource("MagpieFulldataGdx", subtype = "clustermap")
 
     # years per age class, from the names of the age classes (ac0, ac5, ...)
-    ages <- as.numeric(sub("^ac", "", grep("^ac[0-9]+$", getItems(stocksLr, dim = "ac"), value = TRUE)))
+    ageNames <- grep("^ac[0-9]+$", getItems(stocksLr, dim = "ac"), value = TRUE)
+    ages <- as.numeric(sub("^ac", "", ageNames))
     classWidth <- ages[2] - ages[1]
-
-    # unit flow of a process and land type by age class
-    .flow <- function(process, pool) {
-      return(collapseDim(flowsLr[, , paste(process, pool, sep = ".")], dim = c(3.1, 3.2, 3.3)))
-    }
 
     pools <- unique(paste(getItems(stocksLr, dim = 3.1, full = TRUE), getItems(stocksLr, dim = 3.2, full = TRUE),
                           sep = "."))
@@ -54,21 +55,22 @@ calcAgeClassesInput <- function(input) {
 
     # presolve: disturbance, recovery, ageing, maturation; optimisation: outflow and regrowth
     operations <- list(list(kind = "within", pool = "secdforest.total",
-                            flowLr = .flow("disturbance", "secdforest.total"), inflowStages = "disturbance"))
+                            flowLr = .flow(flowsLr, "disturbance", "secdforest.total"), inflowStages = "disturbance"))
     for (pool in intersect(forestry, disturbed)) {
-      operations[[length(operations) + 1]] <- list(kind = "within", pool = pool, flowLr = .flow("disturbance", pool))
+      operations[[length(operations) + 1]] <- list(kind = "within", pool = pool,
+                                                   flowLr = .flow(flowsLr, "disturbance", pool))
     }
     operations[[length(operations) + 1]] <- list(kind = "transfer", from = "other.othernat", to = "other.youngsecdf",
-                                                 flowLr = .flow("recovery", "other.othernat"),
+                                                 flowLr = .flow(flowsLr, "recovery", "other.othernat"),
                                                  stages = c("recoveryForestry", "recovery"))
     operations[[length(operations) + 1]] <- list(kind = "shift")
     operations[[length(operations) + 1]] <- list(kind = "transfer", from = "other.youngsecdf", to = "secdforest.total",
-                                                 flowLr = .flow("maturation", "other.youngsecdf"),
+                                                 flowLr = .flow(flowsLr, "maturation", "other.youngsecdf"),
                                                  stages = "maturation")
     for (pool in pools) {
       operations[[length(operations) + 1]] <- list(kind = "exchange", pool = pool,
-                                                   outflowLr = .flow("outflow", pool),
-                                                   regrowthLr = .flow("regrowth", pool),
+                                                   outflowLr = .flow(flowsLr, "outflow", pool),
+                                                   regrowthLr = .flow(flowsLr, "regrowth", pool),
                                                    excludeStages = c("disturbance", "recoveryForestry", "recovery",
                                                                      "maturation"))
     }

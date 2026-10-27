@@ -88,7 +88,7 @@ toolAllocateCohortFlows <- function(stockHr, flowLr, mapping, totalHr = NULL, to
             "stockHr needs the grid cell names of mapping" = !anyNA(hrToLr),
             "stockHr and flowLr must have the same cohorts" = identical(getNames(stockHr), getNames(flowLr)),
             "totalHr needs the grid cells of stockHr in its order" =
-              is.null(totalHr) || identical(getCells(totalHr), getCells(stockHr)))
+              is.null(totalHr) | identical(getCells(totalHr), getCells(stockHr)))
   stockAll <- .asMatrix(stockHr)
   # stocks and totals far below the tolerance are rounding residues; as zero, they cannot change which grid
   # cells and cohorts the fit reaches
@@ -121,7 +121,8 @@ toolAllocateCohortFlows <- function(stockHr, flowLr, mapping, totalHr = NULL, to
   noFlow <- rowSums(target) == 0
   target[noFlow, ] <- activeStock[noFlow, ]
   targetSum <- rowSums(target)
-  target <- pmin(target * (as.vector(totalSum) / replace(targetSum, targetSum <= 0, 1)), activeStock)
+  scale <- as.vector(totalSum) / replace(targetSum, targetSum <= 0, 1)
+  target <- pmin(target * scale, activeStock)
 
   # cohorts with stock in the active grid cells
   cohorts <- colSums(activeStock) > 0
@@ -145,7 +146,8 @@ toolAllocateCohortFlows <- function(stockHr, flowLr, mapping, totalHr = NULL, to
   missing <- pmax(total - rowSums(x), 0)
   remaining <- fitStock - x
   remainingSum <- rowSums(remaining)
-  x <- x + remaining * pmin(missing / replace(remainingSum, remainingSum <= 0, 1), 1)
+  fillShare <- pmin(missing / replace(remainingSum, remainingSum <= 0, 1), 1)
+  x <- x + remaining * fillShare
 
   # within the stock also after rounding, so that the stock minus the flow is never negative
   flow[which(active), cohorts] <- pmin(x, fitStock)

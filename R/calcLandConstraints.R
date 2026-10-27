@@ -64,8 +64,8 @@ calcLandConstraints <- function(input) {
     }
     croplandHr <- readSource("MagpieRunFiles", subtype = "availableCropland")[, , marginalLand]
     snv <- readSource("MagpieFulldataGdx", subtype = "snv")
-    snvShareHr <- new.magpie(getCells(croplandHr),
-                             fill = unname(snv[["shareIso"]][getItems(croplandHr, dim = 1.3, full = TRUE)]))
+    isoOfCell <- getItems(croplandHr, dim = 1.3, full = TRUE)
+    snvShareHr <- new.magpie(getCells(croplandHr), fill = unname(snv[["shareIso"]][isoOfCell]))
     snvFader <- collapseDim(snv[["fader"]], dim = 1)
     constraints[["crop"]] <- list(types = "crop", upper = croplandHr * (1 - snvShareHr * snvFader),
                                   priority = priorities[["crop"]])

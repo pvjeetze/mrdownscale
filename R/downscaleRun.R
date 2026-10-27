@@ -7,11 +7,13 @@
 #' resulting tgz will be written here
 #' @param ... arguments passed on to retrieveData,
 #' e.g. model ("DOWNSCALEDMAGPIE" or "ESM"), rev, harmonizationPeriod
+#' @param cachefolder madrat cache folder for this call, e.g. in the output folder for cache files that only this
+#' run reuses; NULL (default) keeps the madrat configuration
 #' @return Invisibly, the path to the newly created tgz archive.
 #'
 #' @author Pascal Sauer
 #' @export
-downscaleRun <- function(outputfolder, ...) {
+downscaleRun <- function(outputfolder, ..., cachefolder = NULL) {
   outputfolder <- normalizePath(outputfolder)
 
   clustermap <- Sys.glob(file.path(outputfolder, "clustermap_*.rds"))
@@ -27,5 +29,6 @@ downscaleRun <- function(outputfolder, ...) {
   redirectSource("MagpieRunFiles", runFiles[file.exists(runFiles)], linkOthers = FALSE)
 
   stopifnot(length(getConfig("redirections")) >= 1)
+  localConfig(cachefolder = cachefolder)
   retrieveData(..., outputfolder = outputfolder, puc = FALSE)
 }

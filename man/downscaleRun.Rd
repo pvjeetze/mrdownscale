@@ -4,7 +4,7 @@
 \alias{downscaleRun}
 \title{downscaleRun}
 \usage{
-downscaleRun(outputfolder, ...)
+downscaleRun(outputfolder, ..., cachefolder = NULL)
 }
 \arguments{
 \item{outputfolder}{path to a folder containing fulldata.gdx and clustermap_*.rds,
@@ -12,6 +12,9 @@ resulting tgz will be written here}
 
 \item{...}{arguments passed on to retrieveData,
 e.g. model ("DOWNSCALEDMAGPIE" or "ESM"), rev, harmonizationPeriod}
+
+\item{cachefolder}{madrat cache folder for this call, e.g. in the output folder for cache files that only this
+run reuses; NULL (default) keeps the madrat configuration}
 }
 \value{
 Invisibly, the path to the newly created tgz archive.

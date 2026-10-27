@@ -85,21 +85,14 @@ toolAllocateByCrossEntropy <- function(totalLr, priorHr, mapping, caps = list(),
     return(matrix(x, nrow = dim(x)[1], dimnames = list(getCells(x), getNames(x))))
   }
 
-  # Scales groups above their cap to the cap: flows with sign 1 by a factor a, flows with sign -1 by
-  # 1 / a, with plus * a - minus / a = cap. For groups below their cap, earlier scaling (capFactor
-  # below 1) is reversed up to the cap. The accumulated factor stays at least minFactor.
-  .scaleToCaps <- function(flows, cap, capGroup, capSign, capFactor, minFactor) {
-    # sums of the flows with sign 1 (plus) and -1 (minus) in each group (grid cells x groups)
-    plus <- matrix(0, nrow = nrow(flows), ncol = ncol(cap))
-    minus <- plus
-    for (g in unique(capGroup[!is.na(capGroup)])) {
-      plus[, g] <- rowSums(flows[, which(capGroup == g & capSign > 0), drop = FALSE])
-      minus[, g] <- rowSums(flows[, which(capGroup == g & capSign < 0), drop = FALSE])
-    }
-
+  # Factor a per grid cell that scales a group above its cap to the cap: the flows with sign 1 (sum plus)
+  # by a, the flows with sign -1 (sum minus) by 1 / a, with plus * a - minus / a = cap, for grid cells with
+  # flows of the group (plus + minus > 0). For groups below their cap, earlier scaling (capFactor below 1)
+  # is reversed up to the cap. The accumulated factor stays at least minFactor.
+  .capScale <- function(plus, minus, cap, capFactor, minFactor) {
     # root of plus * a^2 - cap * a - minus = 0, in the form that is exact for cap < 0
     root <- sqrt(cap^2 + 4 * plus * minus)
-    factor <- matrix(Inf, nrow(cap), ncol(cap))
+    factor <- rep(Inf, length(cap))
     capBelowZero <- cap < 0
     factor[capBelowZero] <- 2 * minus[capBelowZero] / (root[capBelowZero] - cap[capBelowZero])
     withPlus <- !capBelowZero & plus > 0
@@ -107,21 +100,9 @@ toolAllocateByCrossEntropy <- function(totalLr, priorHr, mapping, caps = list(),
     # capFactor can reach 0 for hard caps (minFactor 0) where the caps cannot hold
     lower <- if (minFactor > 0) minFactor / capFactor else 0
     factor <- pmax(pmin(factor, 1 / capFactor), lower)
-    # groups without flow, and groups of hard caps with a zero capFactor whose cap does not bind,
-    # stay as they are
-    factor[plus + minus == 0 | is.infinite(factor)] <- 1
-
-    capped <- which(!is.na(capGroup))
-    scale <- factor[, capGroup[capped], drop = FALSE]
-    # a zero factor occurs only where the flows with sign -1 are zero
-    negative <- capSign[capped] < 0
-    inverse <- scale[, negative, drop = FALSE]
-    positive <- inverse > 0
-    inverse[positive] <- 1 / inverse[positive]
-    inverse[!positive] <- 1
-    scale[, negative] <- inverse
-    flows[, capped] <- flows[, capped, drop = FALSE] * scale
-    return(list(flows = flows, capFactor = capFactor * factor))
+    # groups of hard caps with a zero capFactor whose cap does not bind stay as they are
+    factor[is.infinite(factor)] <- 1
+    return(factor)
   }
 
   # Scales the flows of each unit to the unit totals. Totals without any grid cell flow stay zero.
@@ -179,10 +160,16 @@ toolAllocateByCrossEntropy <- function(totalLr, priorHr, mapping, caps = list(),
   total <- .asMatrix(totalLr)
   capMatrix <- lapply(caps, function(block) .asMatrix(block[["cap"]]))
 
-  # row of total for each grid cell, cap column, sign and lowest factor for each flow
+  # row of total for each grid cell; for each cap block its groups (cap column, flows with sign 1 and -1)
+  # and its lowest factor
   lrIndex <- match(hrToLr, rownames(total))
-  capGroup <- lapply(caps, function(block) match(block[["group"]], getNames(block[["cap"]])))
-  capSign <- lapply(caps, function(block) if (is.null(block[["sign"]])) rep(1, ndata(priorHr)) else block[["sign"]])
+  capGroups <- lapply(caps, function(block) {
+    column <- match(block[["group"]], getNames(block[["cap"]]))
+    sign <- if (is.null(block[["sign"]])) rep(1, ndata(priorHr)) else block[["sign"]]
+    return(lapply(unique(column[!is.na(column)]), function(g) {
+      list(column = g, plus = which(column == g & sign > 0), minus = which(column == g & sign < 0))
+    }))
+  })
   minFactor <- lapply(caps, function(block) if (is.null(block[["minFactor"]])) 0 else block[["minFactor"]])
 
   # start values: the prior, and the fallback for each unit and flow whose prior is zero in all
@@ -207,16 +194,32 @@ toolAllocateByCrossEntropy <- function(totalLr, priorHr, mapping, caps = list(),
 
   while (iter < maxIter && any(active)) {
     iter <- iter + 1
-    cells <- active[lrIndex]
+    cells <- which(active[lrIndex])
     activeIndex <- match(lrIndex[cells], which(active))
     activeTotal <- total[active, , drop = FALSE]
     activeFlows <- flows[cells, , drop = FALSE]
 
+    # the groups of a block share no flows, so they are scaled one after another, each only in the grid
+    # cells with flows of the group and a factor other than 1 (most caps bind in few grid cells)
     for (b in seq_along(caps)) {
-      scaled <- .scaleToCaps(activeFlows, capMatrix[[b]][cells, , drop = FALSE], capGroup[[b]],
-                             capSign[[b]], capFactor[[b]][cells, , drop = FALSE], minFactor[[b]])
-      activeFlows <- scaled[["flows"]]
-      capFactor[[b]][cells, ] <- scaled[["capFactor"]]
+      for (group in capGroups[[b]]) {
+        g <- group[["column"]]
+        plus <- rowSums(activeFlows[, group[["plus"]], drop = FALSE])
+        minus <- rowSums(activeFlows[, group[["minus"]], drop = FALSE])
+        withFlows <- which(plus + minus > 0)
+        factor <- .capScale(plus[withFlows], minus[withFlows], capMatrix[[b]][cells[withFlows], g],
+                            capFactor[[b]][cells[withFlows], g], minFactor[[b]])
+        rows <- withFlows[factor != 1]
+        factor <- factor[factor != 1]
+        if (length(rows) > 0) {
+          activeFlows[rows, group[["plus"]]] <- activeFlows[rows, group[["plus"]], drop = FALSE] * factor
+          # a zero factor occurs only where the flows with sign -1 are zero
+          inverse <- 1 / factor
+          inverse[factor == 0] <- 1
+          activeFlows[rows, group[["minus"]]] <- activeFlows[rows, group[["minus"]], drop = FALSE] * inverse
+          capFactor[[b]][cells[rows], g] <- capFactor[[b]][cells[rows], g] * factor
+        }
+      }
     }
 
     # deviation of the unit sums from the totals after scaling to the caps

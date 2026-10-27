@@ -2,7 +2,7 @@
 #'
 #' Run the pipeline to generate downscaled MAgPIE data on the 0.5 degree grid of the land-use
 #' initialisation (landuseinit). Full report on consistency checks is printed and written to
-#' consistencyCheck.log.
+#' \code{logFile}.
 #'
 #' @details With \code{downscaling = "proportional"}, the land of the run is harmonised with
 #' landuseinit and downscaled with \code{luscale::interpolate2}; the output is
@@ -35,11 +35,14 @@
 #' with "transitions", the only method available there)
 #' @param product the products to write with "transitions", one or more of "land", "BII",
 #' "landConservation" and "ageClasses", see details
+#' @param logFile name of the log of the consistency checks, e.g. after the calling script, so that the scripts
+#' of one run do not overwrite each other's log in the output folder
 #'
 #' @author Pascal Sauer, Patrick v. Jeetze
 fullDOWNSCALEDMAGPIE <- function(rev = numeric_version("0"), # nolint: cyclocomp_linter
                                  harmonizationPeriod = c(2015, 2050), target = "landuseinit",
-                                 downscaling = "transitions", harmonization = "none", product = "land") {
+                                 downscaling = "transitions", harmonization = "none", product = "land",
+                                 logFile = "consistencyCheck.log") {
   if (target != "landuseinit") {
     stop("currently only target = landuseinit is supported")
   }
@@ -151,5 +154,5 @@ fullDOWNSCALEDMAGPIE <- function(rev = numeric_version("0"), # nolint: cyclocomp
     }
   }
 
-  toolWriteMadratLog(logPath = "consistencyCheck.log")
+  toolWriteMadratLog(logPath = logFile)
 }

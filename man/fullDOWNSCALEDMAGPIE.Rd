@@ -10,7 +10,8 @@ fullDOWNSCALEDMAGPIE(
   target = "landuseinit",
   downscaling = "transitions",
   harmonization = "none",
-  product = "land"
+  product = "land",
+  logFile = "consistencyCheck.log"
 )
 }
 \arguments{
@@ -30,11 +31,14 @@ with "transitions", the only method available there)}
 
 \item{product}{the products to write with "transitions", one or more of "land", "BII",
 "landConservation" and "ageClasses", see details}
+
+\item{logFile}{name of the log of the consistency checks, e.g. after the calling script, so that the scripts
+of one run do not overwrite each other's log in the output folder}
 }
 \description{
 Run the pipeline to generate downscaled MAgPIE data on the 0.5 degree grid of the land-use
 initialisation (landuseinit). Full report on consistency checks is printed and written to
-consistencyCheck.log.
+\code{logFile}.
 }
 \details{
 With \code{downscaling = "proportional"}, the land of the run is harmonised with

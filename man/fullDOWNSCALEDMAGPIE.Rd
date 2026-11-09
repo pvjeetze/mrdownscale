@@ -8,7 +8,7 @@ fullDOWNSCALEDMAGPIE(
   rev = numeric_version("0"),
   harmonizationPeriod = c(2015, 2050),
   target = "landuseinit",
-  downscaling = "magpieClassic",
+  downscaling = "proportional",
   harmonization = "fade"
 )
 }
@@ -22,7 +22,8 @@ dataset is used, in between harmonize between the two datasets}
 
 \item{target}{Name of dataset to be used as harmonization target and downscaling reference}
 
-\item{downscaling}{name of downscaling method, currently only "magpieClassic"}
+\item{downscaling}{name of downscaling method: "proportional" (\code{luscale::interpolate2}) or "transitions"
+(\code{\link{toolDownscaleTransitions}})}
 
 \item{harmonization}{name of harmonization method, see \code{\link{toolGetHarmonizer}}}
 }

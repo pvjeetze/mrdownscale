@@ -11,9 +11,10 @@
 #' dataset is used, in between harmonize between the two datasets
 #' @param yearsSubset vector of years to keep in the output dataset
 #' @param harmonization name of harmonization method, see \code{\link{toolGetHarmonizer}}
-#' @param downscaling name of downscaling method, currently only "magpieClassic"
+#' @param downscaling name of downscaling method: "proportional" (\code{luscale::interpolate2}) or "transitions"
+#' (\code{\link{toolDownscaleTransitions}} on harmonised states)
 #' @return downscaled land use data
-#' @author Jan Philipp Dietrich, Pascal Sauer
+#' @author Jan Philipp Dietrich, Pascal Sauer, Patrick v. Jeetze
 calcLandHighRes <- function(input, target, harmonizationPeriod, yearsSubset, harmonization, downscaling) {
   x <- calcOutput("LandHarmonized", input = input, target = target,
                   harmonizationPeriod = harmonizationPeriod, harmonization = harmonization,
@@ -37,12 +38,16 @@ calcLandHighRes <- function(input, target, harmonizationPeriod, yearsSubset, har
 
   mapping <- calcOutput("ResolutionMapping", input = input, target = target, aggregate = FALSE)
 
-  if (downscaling == "magpieClassic") {
-    out <- toolDownscaleMagpieClassic(x[, getYears(x, as.integer = TRUE) >= max(histYears), ],
-                                      xTarget[, max(histYears), ],
-                                      xTargetLowRes = landTargetLowRes,
-                                      mapping = mapping)
+  if (downscaling == "proportional" || downscaling == "magpieClassic") {
+    out <- toolDownscaleSimpleProportional(x[, getYears(x, as.integer = TRUE) >= max(histYears), ],
+                                           xTarget[, max(histYears), ],
+                                           xTargetLowRes = landTargetLowRes,
+                                           mapping = mapping)
     out <- out[, getYears(out, as.integer = TRUE) > max(histYears), ]
+  } else if (downscaling == "transitions") {
+    out <- toolDownscaleTransitions(x[, getYears(x, as.integer = TRUE) >= max(histYears), ],
+                                    xTarget[, max(histYears), ],
+                                    mapping = mapping)
   } else {
     stop("Unsupported downscaling method \"", downscaling, "\"")
   }

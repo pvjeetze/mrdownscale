@@ -26,7 +26,8 @@ dataset is used, in between harmonize between the two datasets}
 
 \item{harmonization}{name of harmonization method, see \code{\link{toolGetHarmonizer}}}
 
-\item{downscaling}{name of downscaling method, currently only "magpieClassic"}
+\item{downscaling}{name of downscaling method: "proportional" (\code{luscale::interpolate2}) or "transitions"
+(\code{\link{toolDownscaleTransitions}} on harmonised states)}
 }
 \value{
 downscaled land use data
@@ -37,5 +38,5 @@ from the low resolution input dataset and the high resolution target dataset
 using the given downscaling method.
 }
 \author{
-Jan Philipp Dietrich, Pascal Sauer
+Jan Philipp Dietrich, Pascal Sauer, Patrick v. Jeetze
 }

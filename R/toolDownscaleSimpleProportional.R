@@ -1,7 +1,8 @@
-#' toolDownscaleMagpieClassic
+#' toolDownscaleSimpleProportional
 #'
-#' classic MAgPIE downscaling method using \code{luscale::interpolate2} as
-#' downscaling function.
+#' Proportional downscaling with \code{luscale::interpolate2}: in each low resolution unit, a land type
+#' that shrinks shrinks in each grid cell by the same share, and the freed area goes to the land types
+#' that grow, in proportion to their growth.
 #'
 #' @param x magclass containing land to be downscaled
 #' @param xTarget magclass target land use dataset for initialization year
@@ -9,7 +10,7 @@
 #' @param mapping mapping between \code{x} and \code{xTarget}
 #' @return downscaled land use dataset
 #' @author Jan Philipp Dietrich, Pascal Sauer
-toolDownscaleMagpieClassic <- function(x, xTarget, xTargetLowRes, mapping) {
+toolDownscaleSimpleProportional <- function(x, xTarget, xTargetLowRes, mapping) {
   mapping$cluster <- mapping$lowRes
   mapping <- mapping[, c("cell", "cluster")]
 

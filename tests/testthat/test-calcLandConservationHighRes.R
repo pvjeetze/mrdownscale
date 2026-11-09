@@ -40,6 +40,39 @@ test_that("without land, the data are scaled to the cluster values of the model"
   expect_equal(sum(out[c("3.3.BBB", "4.4.BBB"), , ]), 0)
 })
 
+test_that("on land, protection stays within the land of its type and meets the model where possible", {
+  x <- consvCase()
+  x[["model"]]["AAA.1", , "primforest.protect"] <- 1.5
+  x[["model"]]["AAA.1", , "past.protect"] <- 0.05
+  # grid cell 1 has less natural vegetation (1 Mha) than the data protect (1.5 Mha)
+  x[["data"]]["1.1.AAA", , c("WDPA.primforest", "WDPA.past")] <- c(1.5, 0.1)
+  x[["data"]]["2.2.AAA", , "WDPA.other"] <- 0.2
+  land <- new.magpie(consvMapping[["cell"]], "y2000", paste0(landTypes, ".total"), fill = 0)
+  land["1.1.AAA", , c("primforest", "secdforest", "past")] <- c(0.6, 0.4, 0.1)
+  land["2.2.AAA", , c("other", "past")] <- c(2, 1)
+  consvSources(x, land)
+  out <- calcLandConservationHighRes("magpie", onLand = TRUE)[["x"]]
+  # natural vegetation: 1 Mha in grid cell 1 (all of it, split as its land), the rest of 1.5 in
+  # grid cell 2 (0.2 + 0.3 on its unprotected land); pasture: the model protects half of the data
+  expect_equal(as.vector(out["1.1.AAA", , c("primforest", "secdforest")]), c(0.6, 0.4), tolerance = 1e-5)
+  expect_equal(as.vector(out["2.2.AAA", , "other"]), 0.5, tolerance = 1e-5)
+  expect_equal(as.vector(out["1.1.AAA", , "past"]), 0.05, tolerance = 1e-5)
+  expect_equal(sum(out[c("3.3.BBB", "4.4.BBB"), , ]), 0)
+})
+
+test_that("on land, protection beyond the data fills grid cells with protection in the data first", {
+  x <- consvCase()
+  land <- new.magpie(consvMapping[["cell"]], "y2000", paste0(landTypes, ".total"), fill = 0)
+  # cluster BBB: other land of 1 Mha in both grid cells, data protection of 0.2 Mha in grid cell 3 only
+  land[c("3.3.BBB", "4.4.BBB"), , "other"] <- 1
+  x[["data"]]["3.3.BBB", , "WDPA.other"] <- 0.2
+  # the model protects 1.5 Mha: grid cell 3 is full, the rest goes to grid cell 4
+  x[["model"]]["BBB.2", , "other.protect"] <- 1.5
+  consvSources(x, land)
+  out <- calcLandConservationHighRes("magpie", onLand = TRUE)[["x"]]
+  expect_equal(as.vector(out[c("3.3.BBB", "4.4.BBB"), , "other"]), c(1, 0.5), tolerance = 1e-4)
+})
+
 test_that("base protection follows the WDPA data by year, the last year after it", {
   x <- consvCase()
   x[["model"]] <- new.magpie(c("AAA.1", "BBB.2"), c("y1995", "y2000", "y2005"),

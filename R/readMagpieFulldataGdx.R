@@ -7,7 +7,8 @@
 #' downscaling along the transitions of the model (lists of gdx symbols at cluster level):
 #' landAccounting (cluster land by type and sub-type, upper bounds of the land transitions), landTransitions,
 #' ageClasses and ageClassTransitions (\code{magpie4::landTransitions}, \code{magpie4::ageClasses},
-#' \code{magpie4::ageClassTransitions}), peatland, landConservation, snv, bii, climateFixYear
+#' \code{magpie4::ageClassTransitions}), peatland, landConservation, snv, bii, climateFixYear, restoration
+#' (lower bounds of the restoration of secondary forest and other land) and secdforestCarbonDensity
 #' @author Pascal Sauer, Jan Philipp Dietrich, Patrick v. Jeetze
 readMagpieFulldataGdx <- function(subtype) {
   "!# @monitor magpie4:::land"
@@ -119,6 +120,21 @@ readMagpieFulldataGdx <- function(subtype) {
     x <- magpie4::BII(gdx, level = "cell", landClass = "all")
     unit <- "1"
     description <- "BII coefficients by land class"
+  } else if (subtype == "restoration") {
+    # restoration of the optimisation: the lower bounds of the transitions into secondary forest and other land
+    # (q35_secdforest_restoration and q35_other_restoration, p35_land_restoration)
+    .lower <- function(symbol) {
+      return(collapseDim(gdx2::readGDX(gdx, symbol, select = list(type = "lower")), dim = 3))
+    }
+    x <- mbind(setNames(.lower("oq35_secdforest_restoration"), "secdforest"),
+               setNames(.lower("oq35_other_restoration"), "other"))
+    unit <- "Mha"
+    description <- "Restoration of secondary forest and other land by cluster"
+  } else if (subtype == "secdforestCarbonDensity") {
+    x <- collapseDim(gdx2::readGDX(gdx, "pm_carbon_density_secdforest_ac", select = list(ag_pools = "vegc")),
+                     dim = 3.2)
+    unit <- "tC per ha"
+    description <- "Vegetation carbon density of secondary forest by cluster and age class"
   } else if (subtype == "climateFixYear") {
     return(list(x = as.numeric(gdx2::readGDX(gdx, "sm_fix_cc")), class = "numeric"))
   } else {

@@ -26,7 +26,7 @@ plotLowHigh <- function(variable, year, outputFormat, input, target, ...,
                         range = c(0, 1), xlim = c(-180, 180), ylim = c(-90, 90),
                         harmonizationPeriod = c(2025, 2050),
                         yearsSubset = seq(2015, 2100, 5),
-                        harmonization = "fadeForest", downscaling = "magpieClassic") {
+                        harmonization = "fadeForest", downscaling = "proportional") {
   cellArea <- readSource("LUH3", subtype = "cellArea", convert = FALSE)
 
   landHighRes <- calcOutput("LandReport", outputFormat = outputFormat, input = input,

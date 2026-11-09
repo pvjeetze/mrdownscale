@@ -19,7 +19,9 @@
 #'   \code{cell.land_constraint_excess.csv}, \code{cell.land_transition_change.csv},
 #'   \code{cell.peatland_excess.csv};
 #'   \item BII: \code{cell.bii_0.5.mz};
-#'   \item landConservation: \code{cell.conservation_land_0.5.mz}.
+#'   \item landConservation: \code{cell.conservation_land_0.5.mz};
+#'   \item ageClasses: \code{cell.ageclass_<type>_0.5_share.mz} for secdforest, forestry and other land, and
+#'   \code{cell.ageclass_diagnostics.csv}.
 #' }
 #'
 #' @param rev revision number of the data. If not provided the current date will be used instead.
@@ -31,8 +33,8 @@
 #' @param downscaling name of downscaling method: "proportional" or "transitions", see details
 #' @param harmonization name of harmonization method, see \code{\link{toolGetHarmonizer}}; "none" (only
 #' with "transitions", the only method available there)
-#' @param product the products to write with "transitions", one or more of "land", "BII" and
-#' "landConservation", see details
+#' @param product the products to write with "transitions", one or more of "land", "BII",
+#' "landConservation" and "ageClasses", see details
 #' @param logFile name of the log of the consistency checks, e.g. after the calling script, so that the scripts
 #' of one run do not overwrite each other's log in the output folder
 #'
@@ -59,7 +61,7 @@ fullDOWNSCALEDMAGPIE <- function(rev = numeric_version("0"), # nolint: cyclocomp
                       harmonization = harmonization, downscaling = downscaling, aggregate = FALSE))
   }
 
-  unknown <- setdiff(product, c("land", "BII", "landConservation"))
+  unknown <- setdiff(product, c("land", "BII", "landConservation", "ageClasses"))
   if (length(unknown) > 0) {
     stop("Unsupported product \"", paste(unknown, collapse = "\", \""), "\"")
   }
@@ -131,6 +133,24 @@ fullDOWNSCALEDMAGPIE <- function(rev = numeric_version("0"), # nolint: cyclocomp
       }
       .write(calcOutput("LandConservationHighRes", input = "magpie", onLand = TRUE, aggregate = FALSE),
              "cell.conservation_land_0.5.mz", comment = "unit: Mha per grid-cell")
+    }
+    if ("ageClasses" %in% product) {
+      ageClasses <- calcOutput("AgeClassesReport", outputFormat = "downscaledmagpie", input = "magpie",
+                               aggregate = FALSE)
+      diagnostics <- ageClasses[["diagnostics"]]
+      utils::write.csv(diagnostics, "cell.ageclass_diagnostics.csv", row.names = FALSE)
+      message("Largest deviation of the grid cell area from the grid cell land: ",
+              signif(max(diagnostics[["gridCellDeviation"]]), 3),
+              " Mha; summed deviation of the cluster age classes from the model: ",
+              signif(max(diagnostics[["clusterDeviation"]]), 3), " Mha in a year and land type")
+      # one file per land type: the memory use of write.magpie() grows with the number of items
+      longName <- c(secdforest = "secondary forest", forestry = "forestry", other = "other land")
+      for (type in names(longName)) {
+        .write(ageClasses[[type]], paste0("cell.ageclass_", type, "_0.5_share.mz"),
+               comment = paste0("unit: share of ", longName[[type]], " area in each age class"))
+        ageClasses[[type]] <- NULL
+        gc(verbose = FALSE)
+      }
     }
   }
 

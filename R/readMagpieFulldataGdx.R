@@ -5,8 +5,9 @@
 #' @param subtype type of data to be read in. Available options are
 #' land, crop, woodHarvestWeight, woodHarvestArea, fertilizerRegional, clustermap, and for the
 #' downscaling along the transitions of the model (lists of gdx symbols at cluster level):
-#' landAccounting (cluster land by type and sub-type, upper bounds of the land transitions), landTransitions
-#' (\code{magpie4::landTransitions}), peatland, landConservation, snv, bii, climateFixYear
+#' landAccounting (cluster land by type and sub-type, upper bounds of the land transitions), landTransitions,
+#' ageClasses and ageClassTransitions (\code{magpie4::landTransitions}, \code{magpie4::ageClasses},
+#' \code{magpie4::ageClassTransitions}), peatland, landConservation, snv, bii, climateFixYear
 #' @author Pascal Sauer, Jan Philipp Dietrich, Patrick v. Jeetze
 readMagpieFulldataGdx <- function(subtype) {
   "!# @monitor magpie4:::land"
@@ -16,8 +17,10 @@ readMagpieFulldataGdx <- function(subtype) {
   "!# @monitor magpie4:::NitrogenBudget"
   "!# @monitor magpie4:::PeatlandArea"
   "!# @monitor magpie4:::BII"
+  "!# @monitor magpie4:::ageClasses"
   "!# @monitor magpie4:::landTransitions"
   "!# @monitor magpie4:::landConservation"
+  "!# @monitor magpie4:::ageClassTransitions"
 
   gdx <- "fulldata.gdx"
   stopifnot(file.exists(gdx),
@@ -77,6 +80,14 @@ readMagpieFulldataGdx <- function(subtype) {
     x <- magpie4::landTransitions(gdx, level = "cell")
     unit <- "Mha"
     description <- "land transitions by stage and sub-type in each time step"
+  } else if (subtype == "ageClasses") {
+    x <- magpie4::ageClasses(gdx, level = "cell")
+    unit <- "Mha"
+    description <- "area by land type and age class"
+  } else if (subtype == "ageClassTransitions") {
+    x <- magpie4::ageClassTransitions(gdx, level = "cell")
+    unit <- "Mha"
+    description <- "flows by process, land type and age class in each time step"
   } else if (subtype == "peatland") {
     x <- magpie4::PeatlandArea(gdx, level = "cell", sum = FALSE)
     unit <- "Mha"

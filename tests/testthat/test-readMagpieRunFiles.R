@@ -1,0 +1,10 @@
+test_that("the run files are read from the output folder, and a missing file is named", {
+  withr::local_dir(withr::local_tempdir())
+  write.magpie(new.magpie("1.1.AAA", "y2000", "SSP2", fill = 0.1), "f34_urbanland_0.5.mz")
+  expect_equal(readMagpieRunFiles("available")[["x"]], "urban")
+  urban <- readMagpieRunFiles("urban")
+  expect_equal(as.vector(urban[["x"]]), 0.1)
+  expect_equal(urban[["unit"]], "Mha")
+  expect_error(readMagpieRunFiles("wdpa"), "wdpa_baseline_0.5.mz not found")
+  expect_error(readMagpieRunFiles("rivers"), "Unknown subtype")
+})

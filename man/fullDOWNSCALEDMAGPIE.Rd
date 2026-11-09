@@ -29,8 +29,8 @@ dataset is used, in between harmonize between the two datasets (not used with ha
 \item{harmonization}{name of harmonization method, see \code{\link{toolGetHarmonizer}}; "none" (only
 with "transitions", the only method available there)}
 
-\item{product}{the products to write with "transitions", one or more of "land", "BII" and
-"landConservation", see details}
+\item{product}{the products to write with "transitions", one or more of "land", "BII",
+"landConservation" and "ageClasses", see details}
 
 \item{logFile}{name of the log of the consistency checks, e.g. after the calling script, so that the scripts
 of one run do not overwrite each other's log in the output folder}
@@ -56,7 +56,9 @@ the grid cells (\code{\link{calcLandTransitionsHighRes}}) without harmonisation 
 \code{cell.land_constraint_excess.csv}, \code{cell.land_transition_change.csv},
 \code{cell.peatland_excess.csv};
 \item BII: \code{cell.bii_0.5.mz};
-\item landConservation: \code{cell.conservation_land_0.5.mz}.
+\item landConservation: \code{cell.conservation_land_0.5.mz};
+\item ageClasses: \code{cell.ageclass_<type>_0.5_share.mz} for secdforest, forestry and other land, and
+\code{cell.ageclass_diagnostics.csv}.
 }
 }
 \author{

@@ -107,3 +107,36 @@ magpieSources <- function(case, config = list(), availableCropland = 100, potent
     available = c("config", "landuseInit", "availableCropland", "potentialForest")
   ))
 }
+
+# Age classes of one cluster A with two grid cells and two years, age classes ac0, ac5, ac10 and acx: the
+# model deforests 0.5 Mha of the oldest secondary forest in y2005 (grid cell c1 converts 0.5 Mha secondary
+# forest to cropland), and grid cell c2 gains 0.2 Mha othernat.
+ageCase <- function() {
+  ac <- c("ac0", "ac5", "ac10", "acx")
+  years <- c("y2000", "y2005")
+  pools <- c("secdforest.total", "forestry.plant", "other.othernat", "other.youngsecdf")
+  stocks <- new.magpie("A", years, paste(rep(pools, each = 4), ac, sep = "."), fill = 0,
+                       sets = c("region", "year", "land", "type", "ac"))
+  stocks[, "y2000", "secdforest.total"] <- c(0, 1, 1, 0)
+  stocks[, "y2005", "secdforest.total"] <- c(0, 0, 1, 0.5)
+  stocks[, "y2005", "other.othernat"] <- c(0.2, 0, 0, 0)
+
+  processes <- c("disturbance.secdforest.total", "recovery.other.othernat", "maturation.other.youngsecdf",
+                 paste(rep(c("outflow", "regrowth"), 4), rep(pools, each = 2), sep = "."))
+  flows <- new.magpie("A", years, paste(rep(processes, each = 4), ac, sep = "."), fill = 0,
+                      sets = c("region", "year", "process", "land", "type", "ac"))
+  flows[, "y2005", "outflow.secdforest.total.acx"] <- 0.5
+
+  cells <- c("c1", "c2")
+  land <- new.magpie(cells, years, c("crop.total", pools), fill = 0)
+  land[, , "secdforest.total"] <- c(1, 1, 0.5, 1)
+  land[, "y2005", "other.othernat"] <- c(0, 0.2)
+  transitions <- new.magpie(cells, years, c("optimisation.secdforest.total.crop.total",
+                                            "optimisation.crop.total.other.othernat"), fill = 0)
+  transitions["c1", "y2005", "optimisation.secdforest.total.crop.total"] <- 0.5
+  transitions["c2", "y2005", "optimisation.crop.total.other.othernat"] <- 0.2
+
+  return(list(sources = list(ageClasses = stocks, ageClassTransitions = flows,
+                             clustermap = data.frame(cell = cells, cluster = "A")),
+              land = list(landHr = land, transitionsHr = transitions)))
+}

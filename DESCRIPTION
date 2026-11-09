@@ -6,6 +6,8 @@ Date: 2026-11-02
 Authors@R: c(
     person("Pascal", "Sauer", , "pascal.sauer@pik-potsdam.de", role = c("aut", "cre"),
            comment = c(affiliation = "Potsdam Institute for Climate Impact Research", ORCID = "0000-0002-6856-8239")),
+    person("Patrick", "von Jeetze", , "vjeetze@pik-potsdam.de", role = "aut",
+           comment = c(affiliation = "Potsdam Institute for Climate Impact Research", ORCID = "0000-0002-1197-4412")),
     person("Jan Philipp", "Dietrich", , "dietrich@pik-potsdam.de", role = "aut",
            comment = c(affiliation = "Potsdam Institute for Climate Impact Research", ORCID = "0000-0002-4309-6431"))
   )
@@ -22,13 +24,19 @@ Depends:
     R (>= 4.0.0)
 Imports:
     gdx2,
+    gms,
     luscale (>= 3.1.4),
     magpie4 (>= 2.34.1),
     mip,
     ncdf4,
+    parallel,
+    Rcpp,
+    stats,
     terra,
     utils,
     withr
+LinkingTo:
+    Rcpp
 Suggests:
     covr,
     knitr,

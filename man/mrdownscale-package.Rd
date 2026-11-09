@@ -23,6 +23,7 @@ Useful links:
 Authors:
 \itemize{
   \item Pascal Sauer \email{pascal.sauer@pik-potsdam.de} (\href{https://orcid.org/0000-0002-6856-8239}{ORCID}) (affiliation: Potsdam Institute for Climate Impact Research)
+  \item Patrick von Jeetze \email{vjeetze@pik-potsdam.de} (\href{https://orcid.org/0000-0002-1197-4412}{ORCID}) (affiliation: Potsdam Institute for Climate Impact Research)
   \item Jan Philipp Dietrich \email{dietrich@pik-potsdam.de} (\href{https://orcid.org/0000-0002-4309-6431}{ORCID}) (affiliation: Potsdam Institute for Climate Impact Research)
 }
 
